@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">UPSI Exam Prep</string>
+    <string name="app_name">ExamPrep CSV</string>
     <string name="app_tagline">UP Police Sub-Inspector Mission 2026</string>
     <string name="tab_practice">Practice</string>
     <string name="tab_tests">Mock Tests</string>

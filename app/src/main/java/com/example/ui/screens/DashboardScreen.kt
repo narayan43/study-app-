@@ -15,30 +15,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assignment
-import androidx.compose.material.icons.filled.AutoGraph
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Gavel
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.RateReview
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Translate
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -47,460 +44,371 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.model.Subject
-import com.example.ui.components.AppTab
-import com.example.ui.components.StatCard
-import com.example.ui.theme.CorrectGreen
-import com.example.ui.theme.PoliceGoldDark
-import com.example.ui.theme.PoliceGoldLight
-import com.example.ui.theme.PoliceGoldSecondary
-import com.example.ui.theme.PoliceNavyDark
-import com.example.ui.theme.PoliceNavyLight
-import com.example.ui.theme.PoliceNavyPrimary
-import com.example.ui.theme.PoliceRedTertiary
-import com.example.ui.viewmodel.UPSIViewModel
+import com.example.ui.viewmodel.ExamPrepViewModel
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    viewModel: UPSIViewModel,
-    onNavigateTab: (AppTab) -> Unit,
-    onStartSubjectPractice: (String) -> Unit,
-    onOpenLawHandbook: () -> Unit
+    viewModel: ExamPrepViewModel,
+    onPickFolder: () -> Unit
 ) {
-    val isHindi by viewModel.isBilingualHindi.collectAsState()
-    val questions by viewModel.questions.collectAsState()
-    val attempts by viewModel.attempts.collectAsState()
-    val reviews by viewModel.weeklyReviews.collectAsState()
-    val incorrectIds by viewModel.incorrectQuestionIds.collectAsState()
-
-    val totalQuestionsCount = questions.size
-    val totalAttemptsCount = attempts.size
-    val correctAttemptsCount = attempts.count { it.isCorrect }
-    val overallAccuracy = if (totalAttemptsCount > 0) {
-        (correctAttemptsCount.toFloat() / totalAttemptsCount) * 100f
-    } else 0f
+    val stats by viewModel.dashboardStats.collectAsState()
+    val folderPath by viewModel.folderPath.collectAsState()
+    val isFolderLinked by viewModel.isFolderLinked.collectAsState()
+    val scope = rememberCoroutineScope()
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .testTag("dashboard_screen"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- UP Police SI Mission Hero Card ---
+        // --- Storage Status & Linking Card ---
         item {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("hero_mission_card"),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = PoliceNavyPrimary),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isFolderLinked) Color(0xFFE8F5E9) else Color(0xFFE3F2FD)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(PoliceNavyDark, PoliceNavyPrimary, PoliceNavyLight)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isFolderLinked) Icons.Default.FolderOpen else Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = if (isFolderLinked) Color(0xFF2E7D32) else Color(0xFF1565C0),
+                                modifier = Modifier.size(24.dp)
                             )
-                        )
-                        .padding(18.dp)
-                ) {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = PoliceGoldSecondary.copy(alpha = 0.25f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = PoliceGoldLight,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isHindi) "मिशन 2 सितारे 2026" else "Mission 2 Stars 2026",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            color = PoliceGoldLight,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    )
-                                }
-                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isFolderLinked) "External Data Linked" else "Default Demo Data (Internal)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isFolderLinked) Color(0xFF1B5E20) else Color(0xFF0D47A1)
+                            )
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Text(
-                            text = if (isHindi) "उत्तर प्रदेश पुलिस उप-निरीक्षक" else "UP Police Sub-Inspector",
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        )
-                        Text(
-                            text = if (isHindi) "वर्दी का सपना होगा सच, अनुशासन और निरंतर अभ्यास से।" else "Make your dream of the khaki uniform come true with consistent practice.",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 13.sp
-                            )
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        IconButton(
+                            onClick = { scope.launch { viewModel.reloadData() } }
                         ) {
-                            Button(
-                                onClick = { onNavigateTab(AppTab.PRACTICE) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = PoliceGoldLight,
-                                    contentColor = PoliceNavyDark
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("hero_practice_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MenuBook,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isHindi) "अभ्यास शुरू करें" else "Start Practice",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
+                            Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = Color(0xFF0D47A1))
+                        }
+                    }
 
-                            Button(
-                                onClick = { onNavigateTab(AppTab.MOCK_TESTS) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White.copy(alpha = 0.15f),
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("hero_mock_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Assignment,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isHindi) "मॉक टेस्ट दें" else "Take Mock",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Path: $folderPath",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.DarkGray,
+                        maxLines = 2
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onPickFolder,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                        ) {
+                            Text(if (isFolderLinked) "Change Folder" else "Link Data Folder")
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.resetToDemoData() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Reset Demo")
                         }
                     }
                 }
             }
         }
 
-        // --- Quick Stats Row ---
+        // --- Metric KPI Cards ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                StatCard(
-                    title = if (isHindi) "प्रयास प्रश्न" else "Attempts",
-                    value = "$totalAttemptsCount",
-                    icon = Icons.Default.AutoGraph,
-                    accentColor = PoliceNavyPrimary,
-                    subtitle = if (isHindi) "कुल प्रश्न: $totalQuestionsCount" else "Bank: $totalQuestionsCount",
+                MetricCard(
+                    title = "Total Questions",
+                    value = "${stats.totalQuestions}",
+                    subtitle = "In questions.csv",
+                    icon = Icons.Default.Quiz,
+                    color = Color(0xFF1565C0),
                     modifier = Modifier.weight(1f)
                 )
 
-                StatCard(
-                    title = if (isHindi) "सटीकता दर" else "Accuracy",
-                    value = "%.0f%%".format(overallAccuracy),
+                MetricCard(
+                    title = "Attempted Today",
+                    value = "${stats.attemptedToday}",
+                    subtitle = if (stats.attemptedToday > 0) "${stats.todayAccuracyPercent.toInt()}% correct" else "No attempts today",
                     icon = Icons.Default.CheckCircle,
-                    accentColor = if (overallAccuracy >= 60f) CorrectGreen else PoliceRedTertiary,
-                    subtitle = if (isHindi) "सही: $correctAttemptsCount" else "Correct: $correctAttemptsCount",
+                    color = Color(0xFF2E7D32),
                     modifier = Modifier.weight(1f)
                 )
             }
         }
 
-        // --- Subject Sections Grid ---
-        item {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (isHindi) "विषयवार तैयारी (UPSI 4 खंड)" else "Subjects (4 Sections)",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    )
-                    Text(
-                        text = if (isHindi) "सभी देखें" else "View All",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            color = PoliceNavyPrimary,
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        modifier = Modifier.clickable { onNavigateTab(AppTab.PRACTICE) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                SubjectGrid(
-                    isHindi = isHindi,
-                    onSubjectClick = { onStartSubjectPractice(it) }
-                )
-            }
-        }
-
-        // --- Multi-Modal Study Resources (Notes & Videos) ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateTab(AppTab.NOTES) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(PoliceNavyPrimary.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Description,
-                                contentDescription = null,
-                                tint = PoliceNavyPrimary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = if (isHindi) "स्टडी नोट्स" else "Study Notes",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = if (isHindi) "IPC, CrPC व संविधान" else "Revision summaries",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
-                        )
-                    }
-                }
+                MetricCard(
+                    title = "Streak",
+                    value = "${stats.streakDays} Days",
+                    subtitle = if (stats.streakDays > 0) "Consecutive study" else "Start today!",
+                    icon = Icons.Default.LocalFireDepartment,
+                    color = Color(0xFFE65100),
+                    modifier = Modifier.weight(1f)
+                )
 
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateTab(AppTab.VIDEOS) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(PoliceGoldSecondary.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VideoLibrary,
-                                contentDescription = null,
-                                tint = PoliceGoldDark,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = if (isHindi) "वीडियो क्लासेस" else "Video Classes",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = if (isHindi) "कांसेप्ट मास्टरक्लास" else "Concept lectures",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
-                        )
-                    }
-                }
+                MetricCard(
+                    title = "Overall Avg Time",
+                    value = "${stats.overallAvgTimeSec}s",
+                    subtitle = "Per question speed",
+                    icon = Icons.Default.Timer,
+                    color = Color(0xFF6A1B9A),
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
 
-        // --- Quick Revision & Weekly Review Highlights ---
+        // --- Overall Avg Time callout above charts ---
         item {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpenLawHandbook() },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(PoliceRedTertiary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Gavel,
-                            contentDescription = null,
-                            tint = PoliceRedTertiary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (isHindi) "मूल विधि एवं संविधान पॉकेट गाइड" else "Mool Vidhi & Constitution Guide",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = if (isHindi) "आईपीसी धाराएं, सीआरपीसी, महिला व बाल कानून, मौलिक अधिकार" else "IPC Sections 302, 304B, 498A, CrPC 41, 154, Articles",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        // --- Weak Topics / Mistake Notebook Button (if errors exist) ---
-        if (incorrectIds.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onNavigateTab(AppTab.ANALYTICS) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ErrorOutline,
-                            contentDescription = null,
-                            tint = Color(0xFFE65100),
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (isHindi) "गलती सुधार डायरी (${incorrectIds.size} प्रश्न गलत हुए)" else "Mistakes Notebook (${incorrectIds.size} errors)",
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFBF360C)
-                                )
-                            )
-                            Text(
-                                text = if (isHindi) "इन प्रश्नों को दोबारा हल करके अपनी कमजोरी को ताकत बनाएं" else "Revise and re-attempt to strengthen your weak spots",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = Color(0xFF795548),
-                                    fontSize = 11.sp
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- Weekly Reflection Banner (weekly_reviews.csv) ---
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateTab(AppTab.WEEKLY_REVIEWS) },
-                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(PoliceGoldLight.copy(alpha = 0.25f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.RateReview,
-                            contentDescription = null,
-                            tint = PoliceGoldDark,
-                            modifier = Modifier.size(24.dp)
+                    Column {
+                        Text(
+                            text = "Overall Average Speed",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (stats.overallAvgTimeSec > 0) "${stats.overallAvgTimeSec} seconds per question across all logs" else "No attempts logged yet",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (isHindi) "साप्ताहिक समीक्षा डायरी (Weekly Reviews)" else "Weekly Study Reflection",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = if (isHindi) "इस सप्ताह क्या सीखा? क्या सुधारेंगे? किस बात पर गर्व है?" else "Track what you learned, will change, and are proud of.",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
+                    Text(
+                        text = "${stats.overallAvgTimeSec}s",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF0D47A1)
+                    )
+                }
+            }
+        }
+
+        // --- Daily Attempts Chart ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Daily Attempts (Last 7 Days)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (stats.dailyAttempts.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No attempt logs yet. Answer questions in the Test tab!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    } else {
+                        val maxCount = stats.dailyAttempts.maxOf { it.second }.coerceAtLeast(1)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            stats.dailyAttempts.forEach { (day, count) ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Bottom
+                                ) {
+                                    Text(
+                                        text = "$count",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .width(24.dp)
+                                            .height(((count.toFloat() / maxCount) * 80).coerceAtLeast(6f).dp)
+                                            .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                            .background(Color(0xFF0D47A1))
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = day,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Weak vs Strong Chapters ---
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Weak Chapters
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.TrendingDown, contentDescription = null, tint = Color(0xFFC62828), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Weak Chapters", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (stats.weakChapters.isEmpty()) {
+                            Text("No weak chapters logged (<60%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            stats.weakChapters.forEach { (chap, acc) ->
+                                Text("• $chap: ${acc.toInt()}%", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                            }
+                        }
+                    }
+                }
+
+                // Strong Chapters
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Strong Chapters", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (stats.strongChapters.isEmpty()) {
+                            Text("No strong chapters logged (≥60%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            stats.strongChapters.forEach { (chap, acc) ->
+                                Text("• $chap: ${acc.toInt()}%", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Per-Chapter Accuracy & Avg Time ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Chapter Performance Breakdown",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (stats.chapterStats.isEmpty()) {
+                        Text(
+                            text = "No chapter statistics available yet. Start practicing from the Test tab to populate analytics!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    } else {
+                        stats.chapterStats.forEach { item ->
+                            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "${item.chapter} (${item.exam})",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "${item.accuracyPercent.toInt()}% • ${item.avgTimeSec}s avg",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (item.accuracyPercent >= 60f) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { item.accuracyPercent / 100f },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = if (item.accuracyPercent >= 60f) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                    trackColor = Color(0xFFEEEEEE)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -509,120 +417,57 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun SubjectGrid(
-    isHindi: Boolean,
-    onSubjectClick: (String) -> Unit
-) {
-    val subjects = listOf(
-        SubjectItem(
-            name = "General Hindi",
-            hindiName = "सामान्य हिन्दी",
-            subtitle = "40 प्रश्न • 100 अंक",
-            icon = Icons.Default.Translate,
-            accentColor = Color(0xFF1976D2)
-        ),
-        SubjectItem(
-            name = "Law & Constitution",
-            hindiName = "मूल विधि व संविधान",
-            subtitle = "40 प्रश्न • 100 अंक",
-            icon = Icons.Default.Gavel,
-            accentColor = Color(0xFFC2185B)
-        ),
-        SubjectItem(
-            name = "Numerical & Mental Ability",
-            hindiName = "संख्यात्मक योग्यता (गणित)",
-            subtitle = "40 प्रश्न • 100 अंक",
-            icon = Icons.Default.Calculate,
-            accentColor = Color(0xFF388E3C)
-        ),
-        SubjectItem(
-            name = "Mental Aptitude & Reasoning",
-            hindiName = "मानसिक अभिरुचि व रीजनिंग",
-            subtitle = "40 प्रश्न • 100 अंक",
-            icon = Icons.Default.Psychology,
-            accentColor = Color(0xFFF57C00)
-        )
-    )
-
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            SubjectCard(item = subjects[0], isHindi = isHindi, onClick = { onSubjectClick(subjects[0].name) }, modifier = Modifier.weight(1f))
-            SubjectCard(item = subjects[1], isHindi = isHindi, onClick = { onSubjectClick(subjects[1].name) }, modifier = Modifier.weight(1f))
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            SubjectCard(item = subjects[2], isHindi = isHindi, onClick = { onSubjectClick(subjects[2].name) }, modifier = Modifier.weight(1f))
-            SubjectCard(item = subjects[3], isHindi = isHindi, onClick = { onSubjectClick(subjects[3].name) }, modifier = Modifier.weight(1f))
-        }
-    }
-}
-
-private data class SubjectItem(
-    val name: String,
-    val hindiName: String,
-    val subtitle: String,
-    val icon: ImageVector,
-    val accentColor: Color
-)
-
-@Composable
-private fun SubjectCard(
-    item: SubjectItem,
-    isHindi: Boolean,
-    onClick: () -> Unit,
+fun MetricCard(
+    title: String,
+    value: String,
+    subtitle: String,
+    icon: ImageVector,
+    color: Color,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier
-            .clickable { onClick() }
-            .testTag("subject_card_${item.name.replace(" ", "_")}"),
+        modifier = modifier,
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(item.accentColor.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = item.icon,
-                    contentDescription = null,
-                    tint = item.accentColor,
-                    modifier = Modifier.size(20.dp)
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(color.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+                }
             }
-            Spacer(modifier = Modifier.height(10.dp))
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             Text(
-                text = if (isHindi) item.hindiName else item.name,
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                maxLines = 1
+                text = value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
+
             Spacer(modifier = Modifier.height(2.dp))
+
             Text(
-                text = item.subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 10.sp
-                )
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

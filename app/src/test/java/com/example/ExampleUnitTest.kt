@@ -1,70 +1,85 @@
 package com.example
 
 import com.example.data.csv.CsvHelper
-import com.example.data.model.AttemptEntity
-import com.example.data.model.QuestionEntity
-import com.example.data.model.WeeklyReviewEntity
+import com.example.data.model.AttemptLog
+import com.example.data.model.NoteItem
+import com.example.data.model.QuestionItem
+import com.example.data.model.VideoItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExampleUnitTest {
-    @Test
-    fun testWeeklyReviewsCsvExportAndParse() {
-        val originalReview = WeeklyReviewEntity(
-            weekStart = "2026-09-21",
-            writtenOn = "2026-09-26",
-            learned = "Mastered IPC Section 302 and 304B",
-            willChange = "Practice 20 math questions daily",
-            proudOf = "85% in mock test"
-        )
-        val csv = CsvHelper.exportWeeklyReviewsToCsv(listOf(originalReview))
-        assertTrue(csv.contains("week_start,written_on,learned,will_change,proud_of"))
-        assertTrue(csv.contains("2026-09-21"))
 
-        val parsed = CsvHelper.parseWeeklyReviewsFromCsv(csv)
+    @Test
+    fun testQuestionsCsvParse() {
+        val csv = """
+            ${CsvHelper.QUESTIONS_HEADER}
+            UPSI,q1,Law,IPC,Body,What is Section 300?,Murder,Theft,Assault,Extortion,,,,,,A
+        """.trimIndent()
+
+        val parsed = CsvHelper.parseQuestions(csv)
         assertEquals(1, parsed.size)
-        assertEquals("2026-09-21", parsed[0].weekStart)
-        assertEquals("Mastered IPC Section 302 and 304B", parsed[0].learned)
+        val q = parsed[0]
+        assertEquals("UPSI", q.exam)
+        assertEquals("q1", q.questionId)
+        assertEquals("Law", q.subject)
+        assertEquals("IPC", q.chapter)
+        assertEquals("Body", q.topic)
+        assertEquals("What is Section 300?", q.questionText)
+        assertEquals("Murder", q.optionA)
+        assertEquals("A", q.correctAnswer)
     }
 
     @Test
-    fun testQuestionsCsvExportAndParse() {
-        val question = QuestionEntity(
-            id = "Q_TEST_1",
-            subject = "General Hindi",
-            topic = "Alankar",
-            questionHindi = "कनक कनक ते सौगुनी",
-            questionEnglish = "Kanak kanak",
-            optionA = "यमक",
-            optionB = "श्लेष",
-            optionC = "रूपक",
-            optionD = "उपमा",
-            correctOption = "A",
-            explanation = "यमक अलंकार"
-        )
-        val csv = CsvHelper.exportQuestionsToCsv(listOf(question))
-        assertTrue(csv.contains("id,subject,topic"))
-        assertTrue(csv.contains("Q_TEST_1"))
+    fun testNotesCsvParse() {
+        val csv = """
+            ${CsvHelper.NOTES_HEADER}
+            n1,UPSI,Law,IPC,Body,IPC Summary,notes/files/ipc.txt,markdown
+        """.trimIndent()
 
-        val parsed = CsvHelper.parseQuestionsFromCsv(csv)
+        val parsed = CsvHelper.parseNotes(csv)
         assertEquals(1, parsed.size)
-        assertEquals("Q_TEST_1", parsed[0].id)
-        assertEquals("A", parsed[0].correctOption)
+        assertEquals("n1", parsed[0].noteId)
+        assertEquals("IPC Summary", parsed[0].title)
+        assertEquals("notes/files/ipc.txt", parsed[0].filePath)
     }
 
     @Test
-    fun testAttemptsCsvExport() {
-        val attempt = AttemptEntity(
-            questionId = "Q_TEST_1",
-            chosenOption = "A",
-            isCorrect = true,
-            timeTakenSeconds = 25,
-            attemptedAt = 1700000000000L,
-            mode = "PRACTICE"
+    fun testVideosCsvParse() {
+        val csv = """
+            ${CsvHelper.VIDEOS_HEADER}
+            v1,UPSI,Law,IPC,Body,IPC Video,videos/ipc.mp4,1200
+        """.trimIndent()
+
+        val parsed = CsvHelper.parseVideos(csv)
+        assertEquals(1, parsed.size)
+        assertEquals("v1", parsed[0].videoId)
+        assertEquals(1200, parsed[0].durationSec)
+    }
+
+    @Test
+    fun testAttemptsFormatAndParse() {
+        val log = AttemptLog(
+            attemptId = "att_1",
+            questionId = "q1",
+            exam = "UPSI",
+            subject = "Law",
+            chapter = "IPC",
+            chosenAnswer = "A",
+            isCorrect = 1,
+            timeSpentSec = 15,
+            timestamp = 1700000000000L
         )
-        val csv = CsvHelper.exportAttemptsToCsv(listOf(attempt))
-        assertTrue(csv.contains("question_id,chosen_option,is_correct"))
-        assertTrue(csv.contains("Q_TEST_1,A,true,25"))
+
+        val line = CsvHelper.formatAttemptLine(log)
+        val csv = "${CsvHelper.ATTEMPTS_HEADER}\n$line"
+        val parsed = CsvHelper.parseAttempts(csv)
+
+        assertEquals(1, parsed.size)
+        assertEquals("att_1", parsed[0].attemptId)
+        assertEquals("q1", parsed[0].questionId)
+        assertEquals(1, parsed[0].isCorrect)
+        assertEquals(15, parsed[0].timeSpentSec)
     }
 }

@@ -1,10 +1,14 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,39 +19,24 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.example.data.local.AppDatabase
-import com.example.data.repository.UPSIRepository
+import com.example.data.model.TestSliceSource
+import com.example.data.repository.DataService
 import com.example.ui.components.AppTab
-import com.example.ui.components.UPSIBottomBar
-import com.example.ui.components.UPSITopBar
-import com.example.ui.screens.AttemptsAnalyticsScreen
-import com.example.ui.screens.CsvDataManagementScreen
+import com.example.ui.components.DrillDownSelector
+import com.example.ui.components.ExamPrepBottomBar
+import com.example.ui.components.ExamPrepTopBar
 import com.example.ui.screens.DashboardScreen
-import com.example.ui.screens.LawGuideScreen
-import com.example.ui.screens.MockTestExamScreen
-import com.example.ui.screens.MockTestListScreen
-import com.example.ui.screens.MockTestResultScreen
-import com.example.ui.screens.NoteDetailReaderScreen
-import com.example.ui.screens.NotesHubScreen
-import com.example.ui.screens.PracticeScreen
-import com.example.ui.screens.VideoHubScreen
-import com.example.ui.screens.VideoPlayerScreen
-import com.example.ui.screens.WeeklyReviewsScreen
+import com.example.ui.screens.MistakesScreen
+import com.example.ui.screens.NotesScreen
+import com.example.ui.screens.ReelsScreen
+import com.example.ui.screens.TestPlayerScreen
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.viewmodel.UPSIViewModel
-import com.example.ui.viewmodel.UPSIViewModelFactory
-
-enum class AppSubScreen {
-    MAIN,
-    EXAM,
-    EXAM_RESULT,
-    LAW_GUIDE,
-    CSV_MANAGER,
-    NOTE_READER,
-    VIDEO_PLAYER
-}
+import com.example.ui.viewmodel.ExamPrepViewModel
+import com.example.ui.viewmodel.ExamPrepViewModelFactory
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -55,231 +44,141 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val database = AppDatabase.getInstance(applicationContext)
-        val repository = UPSIRepository(
-            questionDao = database.questionDao(),
-            attemptDao = database.attemptDao(),
-            weeklyReviewDao = database.weeklyReviewDao(),
-            mockTestResultDao = database.mockTestResultDao(),
-            noteDao = database.noteDao(),
-            videoDao = database.videoDao()
-        )
-        val factory = UPSIViewModelFactory(repository)
+        val dataService = DataService(applicationContext)
+        val factory = ExamPrepViewModelFactory(dataService)
 
         setContent {
-            val viewModel: UPSIViewModel by viewModels { factory }
+            val viewModel: ExamPrepViewModel by viewModels { factory }
             MyApplicationTheme {
-                UPSIMainApp(viewModel = viewModel)
+                ExamPrepMainApp(viewModel = viewModel)
             }
         }
     }
 }
 
 @Composable
-fun UPSIMainApp(viewModel: UPSIViewModel) {
-    val isHindi by viewModel.isBilingualHindi.collectAsState()
-    val selectedNote by viewModel.selectedNote.collectAsState()
-    val selectedVideo by viewModel.selectedVideo.collectAsState()
+fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
     var currentTab by remember { mutableStateOf(AppTab.DASHBOARD) }
-    var subScreen by remember { mutableStateOf(AppSubScreen.MAIN) }
+    val isFolderLinked by viewModel.isFolderLinked.collectAsState()
+    val activeTestQuestions by viewModel.activeTestQuestions.collectAsState()
+    val drillFilter by viewModel.drillFilter.collectAsState()
+    val scope = rememberCoroutineScope()
 
-    // Safe BackHandler for sub-screens
-    BackHandler(enabled = subScreen != AppSubScreen.MAIN) {
-        when (subScreen) {
-            AppSubScreen.EXAM -> {
-                // Handled internally in MockTestExamScreen
-            }
-            AppSubScreen.EXAM_RESULT -> {
-                subScreen = AppSubScreen.MAIN
-                currentTab = AppTab.MOCK_TESTS
-            }
-            AppSubScreen.LAW_GUIDE, AppSubScreen.CSV_MANAGER -> {
-                subScreen = AppSubScreen.MAIN
-            }
-            AppSubScreen.NOTE_READER -> {
-                subScreen = AppSubScreen.MAIN
-                currentTab = AppTab.NOTES
-            }
-            AppSubScreen.VIDEO_PLAYER -> {
-                subScreen = AppSubScreen.MAIN
-                currentTab = AppTab.VIDEOS
-            }
-            AppSubScreen.MAIN -> {}
+    // SAF folder picker launcher
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.linkDataFolder(uri)
         }
     }
 
-    // Safe BackHandler for secondary tabs back to Dashboard
-    BackHandler(enabled = subScreen == AppSubScreen.MAIN && currentTab != AppTab.DASHBOARD) {
+    // Back handling: If active test is playing, return to current tab
+    BackHandler(enabled = activeTestQuestions.isNotEmpty()) {
+        viewModel.startTestSlice(TestSliceSource.DrillDown(drillFilter.copy(exam = null)))
+        // Clears test questions
+    }
+
+    // Back handling: Secondary tabs back to Dashboard
+    BackHandler(enabled = activeTestQuestions.isEmpty() && currentTab != AppTab.DASHBOARD) {
         currentTab = AppTab.DASHBOARD
     }
 
-    when (subScreen) {
-        AppSubScreen.EXAM -> {
-            MockTestExamScreen(
-                viewModel = viewModel,
-                onTestFinished = {
-                    subScreen = AppSubScreen.EXAM_RESULT
-                },
-                onCancelTest = {
-                    subScreen = AppSubScreen.MAIN
-                }
-            )
-        }
-
-        AppSubScreen.EXAM_RESULT -> {
-            MockTestResultScreen(
-                viewModel = viewModel,
-                onBackHome = {
-                    subScreen = AppSubScreen.MAIN
-                    currentTab = AppTab.DASHBOARD
-                },
-                onTakeAnotherTest = {
-                    subScreen = AppSubScreen.MAIN
-                    currentTab = AppTab.MOCK_TESTS
-                }
-            )
-        }
-
-        AppSubScreen.LAW_GUIDE -> {
-            LawGuideScreen(
-                onBack = { subScreen = AppSubScreen.MAIN },
-                isHindi = isHindi
-            )
-        }
-
-        AppSubScreen.CSV_MANAGER -> {
-            CsvDataManagementScreen(
-                viewModel = viewModel,
-                onBack = { subScreen = AppSubScreen.MAIN }
-            )
-        }
-
-        AppSubScreen.NOTE_READER -> {
-            selectedNote?.let { note ->
-                NoteDetailReaderScreen(
-                    note = note,
-                    viewModel = viewModel,
-                    onBack = { subScreen = AppSubScreen.MAIN },
-                    onPracticeLinkedQuestions = {
-                        viewModel.setPracticeFilter(null)
-                        subScreen = AppSubScreen.MAIN
-                        currentTab = AppTab.PRACTICE
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            if (activeTestQuestions.isEmpty()) {
+                ExamPrepTopBar(
+                    isFolderLinked = isFolderLinked,
+                    onPickFolder = {
+                        folderPickerLauncher.launch(null)
+                    },
+                    onReloadData = {
+                        scope.launch { viewModel.reloadData() }
                     }
                 )
-            } ?: run {
-                subScreen = AppSubScreen.MAIN
+            }
+        },
+        bottomBar = {
+            if (activeTestQuestions.isEmpty()) {
+                ExamPrepBottomBar(
+                    currentTab = currentTab,
+                    onTabSelected = { currentTab = it }
+                )
             }
         }
-
-        AppSubScreen.VIDEO_PLAYER -> {
-            selectedVideo?.let { video ->
-                VideoPlayerScreen(
-                    video = video,
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // When an active test slice is running, present the Test Player immediately
+            if (activeTestQuestions.isNotEmpty()) {
+                TestPlayerScreen(
                     viewModel = viewModel,
-                    onBack = { subScreen = AppSubScreen.MAIN },
-                    onPracticeLinkedQuestions = {
-                        viewModel.setPracticeFilter(null)
-                        subScreen = AppSubScreen.MAIN
-                        currentTab = AppTab.PRACTICE
+                    onBack = {
+                        viewModel.startTestSlice(TestSliceSource.DrillDown(drillFilter.copy(exam = null)))
+                    },
+                    onOpenNoteReader = { note ->
+                        viewModel.openNote(note)
+                        currentTab = AppTab.NOTES
                     }
                 )
-            } ?: run {
-                subScreen = AppSubScreen.MAIN
-            }
-        }
+            } else {
+                when (currentTab) {
+                    AppTab.DASHBOARD -> {
+                        DashboardScreen(
+                            viewModel = viewModel,
+                            onPickFolder = { folderPickerLauncher.launch(null) }
+                        )
+                    }
 
-        AppSubScreen.MAIN -> {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                topBar = {
-                    UPSITopBar(
-                        isHindi = isHindi,
-                        onToggleLanguage = { viewModel.toggleLanguage() },
-                        onOpenCsvManager = { subScreen = AppSubScreen.CSV_MANAGER },
-                        onOpenLawGuide = { subScreen = AppSubScreen.LAW_GUIDE }
-                    )
-                },
-                bottomBar = {
-                    UPSIBottomBar(
-                        currentTab = currentTab,
-                        onTabSelected = { currentTab = it },
-                        isHindi = isHindi
-                    )
-                }
-            ) { innerPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    when (currentTab) {
-                        AppTab.DASHBOARD -> {
-                            DashboardScreen(
-                                viewModel = viewModel,
-                                onNavigateTab = { tab -> currentTab = tab },
-                                onStartSubjectPractice = { subject ->
-                                    viewModel.setPracticeFilter(subject)
-                                    currentTab = AppTab.PRACTICE
-                                },
-                                onOpenLawHandbook = { subScreen = AppSubScreen.LAW_GUIDE }
-                            )
-                        }
+                    AppTab.TEST -> {
+                        // Shared drill-down to pick exam/subject/chapter for Test slice
+                        DrillDownSelector(
+                            title = "Test: Choose Exam & Chapter",
+                            exams = viewModel.listExams(),
+                            currentFilter = drillFilter,
+                            getSubjects = { viewModel.listSubjects(it) },
+                            getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
+                            getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
+                            onFilterChanged = { viewModel.setFilter(it) },
+                            onSliceReady = { filter ->
+                                viewModel.startTestSlice(TestSliceSource.DrillDown(filter))
+                            }
+                        )
+                    }
 
-                        AppTab.PRACTICE -> {
-                            PracticeScreen(viewModel = viewModel)
-                        }
+                    AppTab.NOTES -> {
+                        NotesScreen(
+                            viewModel = viewModel,
+                            onStartTestSlice = { source ->
+                                viewModel.startTestSlice(source)
+                            }
+                        )
+                    }
 
-                        AppTab.NOTES -> {
-                            NotesHubScreen(
-                                viewModel = viewModel,
-                                onOpenNoteReader = { note ->
-                                    viewModel.selectNote(note)
-                                    subScreen = AppSubScreen.NOTE_READER
-                                },
-                                onPracticeLinkedQuestions = {
-                                    viewModel.setPracticeFilter(null)
-                                    currentTab = AppTab.PRACTICE
-                                }
-                            )
-                        }
+                    AppTab.MISTAKES -> {
+                        MistakesScreen(
+                            viewModel = viewModel,
+                            onStartTestSlice = { source ->
+                                viewModel.startTestSlice(source)
+                            },
+                            onOpenNotesForChapter = { filter ->
+                                viewModel.setFilter(filter)
+                                currentTab = AppTab.NOTES
+                            }
+                        )
+                    }
 
-                        AppTab.VIDEOS -> {
-                            VideoHubScreen(
-                                viewModel = viewModel,
-                                onOpenVideoPlayer = { video ->
-                                    viewModel.selectVideo(video)
-                                    subScreen = AppSubScreen.VIDEO_PLAYER
-                                },
-                                onPracticeLinkedQuestions = {
-                                    viewModel.setPracticeFilter(null)
-                                    currentTab = AppTab.PRACTICE
-                                }
-                            )
-                        }
-
-                        AppTab.MOCK_TESTS -> {
-                            MockTestListScreen(
-                                viewModel = viewModel,
-                                onStartTest = { config ->
-                                    viewModel.startMockTest(config)
-                                    subScreen = AppSubScreen.EXAM
-                                }
-                            )
-                        }
-
-                        AppTab.ANALYTICS -> {
-                            AttemptsAnalyticsScreen(
-                                viewModel = viewModel,
-                                onPracticeQuestion = { _ ->
-                                    viewModel.setPracticeFilter(null)
-                                    currentTab = AppTab.PRACTICE
-                                }
-                            )
-                        }
-
-                        AppTab.WEEKLY_REVIEWS -> {
-                            WeeklyReviewsScreen(viewModel = viewModel)
-                        }
+                    AppTab.REELS -> {
+                        ReelsScreen(
+                            viewModel = viewModel,
+                            onStartTestSlice = { source ->
+                                viewModel.startTestSlice(source)
+                            }
+                        )
                     }
                 }
             }

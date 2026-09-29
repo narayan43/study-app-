@@ -1,6 +1,6 @@
 {
-  "name": "UPSI Exam Prep",
-  "description": "UP Police SI Exam preparation app with question bank, mock tests, attempts tracking, and weekly reviews.",
+  "name": "ExamPrep CSV",
+  "description": "Multi-exam study app running directly against Data/ CSV files with Test player, Notes, Mistakes, and Reels.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
