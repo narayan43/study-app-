@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">UPSI Exam Prep</string>
+    <string name="app_tagline">UP Police Sub-Inspector Mission 2026</string>
+    <string name="tab_practice">Practice</string>
+    <string name="tab_tests">Mock Tests</string>
+    <string name="tab_analytics">Attempts &amp; Analytics</string>
+    <string name="tab_reviews">Weekly Reviews</string>
+    <string name="tab_syllabus">Syllabus &amp; Laws</string>
+</resources>

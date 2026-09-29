@@ -1,0 +1,6 @@
+{
+  "name": "UPSI Exam Prep",
+  "description": "UP Police SI Exam preparation app with question bank, mock tests, attempts tracking, and weekly reviews.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
