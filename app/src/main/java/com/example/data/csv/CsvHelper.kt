@@ -8,6 +8,11 @@ import com.example.data.model.QuestionItem
 import com.example.data.model.VideoItem
 import com.example.data.model.VideoQuestionLink
 import com.example.data.model.VideoUsageLog
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 object CsvHelper {
 
@@ -20,6 +25,41 @@ object CsvHelper {
     const val ATTEMPTS_HEADER = "attempt_id,question_id,exam,subject,chapter,chosen_answer,is_correct,time_spent_sec,timestamp"
     const val NOTES_USAGE_HEADER = "event_id,note_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec"
     const val VIDEO_USAGE_HEADER = "event_id,video_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec,started_test"
+
+    // Parse ISO-8601 first, fallback to epoch millis
+    fun parseTimestamp(str: String): Long {
+        if (str.isBlank()) return 0L
+        val trimmed = str.trim()
+        // 1. Try ISO-8601 with offset
+        try {
+            return OffsetDateTime.parse(trimmed).toInstant().toEpochMilli()
+        } catch (_: Exception) {}
+
+        // 2. Try Instant (e.g. Z)
+        try {
+            return Instant.parse(trimmed).toEpochMilli()
+        } catch (_: Exception) {}
+
+        // 3. Try LocalDateTime (without offset)
+        try {
+            val ldt = LocalDateTime.parse(trimmed)
+            return ldt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        } catch (_: Exception) {}
+
+        // 4. Fallback to epoch millis if all digits
+        return trimmed.toLongOrNull() ?: 0L
+    }
+
+    // Format as ISO-8601 with system zone offset
+    fun formatIsoTimestamp(epochMilli: Long = System.currentTimeMillis()): String {
+        return try {
+            val instant = Instant.ofEpochMilli(epochMilli)
+            OffsetDateTime.ofInstant(instant, ZoneId.systemDefault())
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        } catch (_: Exception) {
+            OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        }
+    }
 
     fun parseQuestions(csvContent: String): List<QuestionItem> {
         val lines = csvContent.lines().filter { it.isNotBlank() }
@@ -134,6 +174,7 @@ object CsvHelper {
         for (i in 1 until lines.size) {
             val cols = parseCsvLine(lines[i])
             if (cols.size >= 9) {
+                val rawTime = cols[8].trim()
                 result.add(
                     AttemptLog(
                         attemptId = cols[0],
@@ -144,7 +185,8 @@ object CsvHelper {
                         chosenAnswer = cols[5],
                         isCorrect = cols[6].toIntOrNull() ?: 0,
                         timeSpentSec = cols[7].toIntOrNull() ?: 0,
-                        timestamp = cols[8].toLongOrNull() ?: 0L
+                        timestamp = parseTimestamp(rawTime),
+                        rawTimestamp = rawTime
                     )
                 )
             }
@@ -159,6 +201,8 @@ object CsvHelper {
         for (i in 1 until lines.size) {
             val cols = parseCsvLine(lines[i])
             if (cols.size >= 8) {
+                val rawOpened = cols[5].trim()
+                val rawClosed = cols[6].trim()
                 result.add(
                     NoteUsageLog(
                         eventId = cols[0],
@@ -166,9 +210,11 @@ object CsvHelper {
                         exam = cols[2],
                         subject = cols[3],
                         chapter = cols[4],
-                        openedAt = cols[5].toLongOrNull() ?: 0L,
-                        closedAt = cols[6].toLongOrNull() ?: 0L,
-                        timeSpentSec = cols[7].toIntOrNull() ?: 0
+                        openedAt = parseTimestamp(rawOpened),
+                        closedAt = parseTimestamp(rawClosed),
+                        timeSpentSec = cols[7].toIntOrNull() ?: 0,
+                        rawOpenedAt = rawOpened,
+                        rawClosedAt = rawClosed
                     )
                 )
             }
@@ -183,6 +229,8 @@ object CsvHelper {
         for (i in 1 until lines.size) {
             val cols = parseCsvLine(lines[i])
             if (cols.size >= 9) {
+                val rawOpened = cols[5].trim()
+                val rawClosed = cols[6].trim()
                 result.add(
                     VideoUsageLog(
                         eventId = cols[0],
@@ -190,10 +238,12 @@ object CsvHelper {
                         exam = cols[2],
                         subject = cols[3],
                         chapter = cols[4],
-                        openedAt = cols[5].toLongOrNull() ?: 0L,
-                        closedAt = cols[6].toLongOrNull() ?: 0L,
+                        openedAt = parseTimestamp(rawOpened),
+                        closedAt = parseTimestamp(rawClosed),
                         timeSpentSec = cols[7].toIntOrNull() ?: 0,
-                        startedTest = cols[8].toIntOrNull() ?: 0
+                        startedTest = cols[8].toIntOrNull() ?: 0,
+                        rawOpenedAt = rawOpened,
+                        rawClosedAt = rawClosed
                     )
                 )
             }
@@ -202,15 +252,20 @@ object CsvHelper {
     }
 
     fun formatAttemptLine(attempt: AttemptLog): String {
-        return "${escape(attempt.attemptId)},${escape(attempt.questionId)},${escape(attempt.exam)},${escape(attempt.subject)},${escape(attempt.chapter)},${escape(attempt.chosenAnswer)},${attempt.isCorrect},${attempt.timeSpentSec},${attempt.timestamp}\n"
+        val isoTime = if (attempt.rawTimestamp.isNotBlank()) attempt.rawTimestamp else formatIsoTimestamp(attempt.timestamp)
+        return "${escape(attempt.attemptId)},${escape(attempt.questionId)},${escape(attempt.exam)},${escape(attempt.subject)},${escape(attempt.chapter)},${escape(attempt.chosenAnswer)},${attempt.isCorrect},${attempt.timeSpentSec},$isoTime\n"
     }
 
     fun formatNoteUsageLine(usage: NoteUsageLog): String {
-        return "${escape(usage.eventId)},${escape(usage.noteId)},${escape(usage.exam)},${escape(usage.subject)},${escape(usage.chapter)},${usage.openedAt},${usage.closedAt},${usage.timeSpentSec}\n"
+        val openIso = if (usage.rawOpenedAt.isNotBlank()) usage.rawOpenedAt else formatIsoTimestamp(usage.openedAt)
+        val closeIso = if (usage.rawClosedAt.isNotBlank()) usage.rawClosedAt else formatIsoTimestamp(usage.closedAt)
+        return "${escape(usage.eventId)},${escape(usage.noteId)},${escape(usage.exam)},${escape(usage.subject)},${escape(usage.chapter)},$openIso,$closeIso,${usage.timeSpentSec}\n"
     }
 
     fun formatVideoUsageLine(usage: VideoUsageLog): String {
-        return "${escape(usage.eventId)},${escape(usage.videoId)},${escape(usage.exam)},${escape(usage.subject)},${escape(usage.chapter)},${usage.openedAt},${usage.closedAt},${usage.timeSpentSec},${usage.startedTest}\n"
+        val openIso = if (usage.rawOpenedAt.isNotBlank()) usage.rawOpenedAt else formatIsoTimestamp(usage.openedAt)
+        val closeIso = if (usage.rawClosedAt.isNotBlank()) usage.rawClosedAt else formatIsoTimestamp(usage.closedAt)
+        return "${escape(usage.eventId)},${escape(usage.videoId)},${escape(usage.exam)},${escape(usage.subject)},${escape(usage.chapter)},$openIso,$closeIso,${usage.timeSpentSec},${usage.startedTest}\n"
     }
 
     fun escape(data: String): String {

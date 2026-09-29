@@ -7,6 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.example.data.csv.CsvHelper
 import com.example.data.model.AttemptLog
 import com.example.data.model.ChapterStatItem
+import com.example.data.model.DailyAttemptStat
 import com.example.data.model.DashboardStats
 import com.example.data.model.DrillDownFilter
 import com.example.data.model.NoteItem
@@ -20,10 +21,11 @@ import com.example.data.sample.DummyDataGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
 import java.text.SimpleDateFormat
-import java.util.Calendar
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -50,15 +52,20 @@ class DataService(private val context: Context) {
         if (uriStr != null) {
             externalTreeUri = Uri.parse(uriStr)
         }
-        // Ensure initial dummy directory exists for first-run
-        if (!localDataDir.exists()) {
+        // First-run internal fallback
+        if (externalTreeUri == null && !localDataDir.exists()) {
             localDataDir.mkdirs()
             DummyDataGenerator.generateDummyDataTree(localDataDir)
         }
     }
 
     fun isFolderLinked(): Boolean = externalTreeUri != null
-    fun getCurrentFolderDisplay(): String = externalTreeUri?.path ?: localDataDir.absolutePath
+    fun getCurrentFolderDisplay(): String = externalTreeUri?.toString() ?: localDataDir.absolutePath
+
+    fun isDarkTheme(): Boolean = prefs.getBoolean("is_dark_theme", false)
+    fun setDarkTheme(isDark: Boolean) {
+        prefs.edit().putBoolean("is_dark_theme", isDark).apply()
+    }
 
     suspend fun linkDataFolder(uri: Uri) = withContext(Dispatchers.IO) {
         try {
@@ -70,14 +77,35 @@ class DataService(private val context: Context) {
 
         externalTreeUri = uri
         prefs.edit().putString("data_folder_uri", uri.toString()).apply()
+        ensureMissingLogFilesOnExternal(uri)
+        reloadData()
+    }
+
+    suspend fun unlinkFolder() = withContext(Dispatchers.IO) {
+        externalTreeUri = null
+        prefs.edit().remove("data_folder_uri").apply()
+        if (!localDataDir.exists()) {
+            localDataDir.mkdirs()
+            DummyDataGenerator.generateDummyDataTree(localDataDir)
+        }
         reloadData()
     }
 
     suspend fun resetToDefaultData() = withContext(Dispatchers.IO) {
-        externalTreeUri = null
-        prefs.edit().remove("data_folder_uri").apply()
+        unlinkFolder()
         DummyDataGenerator.generateDummyDataTree(localDataDir)
         reloadData()
+    }
+
+    private fun ensureMissingLogFilesOnExternal(treeUri: Uri) {
+        val filesWithHeaders = listOf(
+            "logs/attempts.csv" to CsvHelper.ATTEMPTS_HEADER,
+            "logs/notes_usage.csv" to CsvHelper.NOTES_USAGE_HEADER,
+            "logs/video_usage.csv" to CsvHelper.VIDEO_USAGE_HEADER
+        )
+        for ((relPath, header) in filesWithHeaders) {
+            getOrCreateDocumentFile(treeUri, relPath, header)
+        }
     }
 
     suspend fun reloadData() = withContext(Dispatchers.IO) {
@@ -155,6 +183,7 @@ class DataService(private val context: Context) {
         return qTopics.distinct().filter { it.isNotBlank() }
     }
 
+    // Gap 5: Multi-width slices (Exam / Subject / Chapter / Topic)
     fun questionsFor(filter: DrillDownFilter): List<QuestionItem> {
         return cachedQuestions.filter { q ->
             (filter.exam == null || q.exam.equals(filter.exam, ignoreCase = true)) &&
@@ -183,27 +212,31 @@ class DataService(private val context: Context) {
     }
 
     fun questionsForNote(noteId: String): List<QuestionItem> {
-        val qIds = cachedNoteQuestions.filter { it.noteId == noteId }.map { it.questionId }.toSet()
-        return cachedQuestions.filter { it.questionId in qIds }
+        val qIds = cachedNoteQuestions.filter { it.noteId.trim() == noteId.trim() }.map { it.questionId.trim() }.toSet()
+        return cachedQuestions.filter { it.questionId.trim() in qIds }
     }
 
     fun questionsForVideo(videoId: String): List<QuestionItem> {
-        val qIds = cachedVideoQuestions.filter { it.videoId == videoId }.map { it.questionId }.toSet()
-        return cachedQuestions.filter { it.questionId in qIds }
+        val qIds = cachedVideoQuestions.filter { it.videoId.trim() == videoId.trim() }.map { it.questionId.trim() }.toSet()
+        return cachedQuestions.filter { it.questionId.trim() in qIds }
     }
 
     fun notesForQuestion(questionId: String): List<NoteItem> {
-        val nIds = cachedNoteQuestions.filter { it.questionId == questionId }.map { it.noteId }.toSet()
-        return cachedNotes.filter { it.noteId in nIds }
+        val nIds = cachedNoteQuestions.filter { it.questionId.trim() == questionId.trim() }.map { it.noteId.trim() }.toSet()
+        return cachedNotes.filter { it.noteId.trim() in nIds }
+    }
+
+    fun videosForQuestion(questionId: String): List<VideoItem> {
+        val vIds = cachedVideoQuestions.filter { it.questionId.trim() == questionId.trim() }.map { it.videoId.trim() }.toSet()
+        return cachedVideos.filter { it.videoId.trim() in vIds }
     }
 
     fun getQuestionsByIds(ids: List<String>): List<QuestionItem> {
-        val set = ids.toSet()
-        return cachedQuestions.filter { it.questionId in set }
+        val set = ids.map { it.trim() }.toSet()
+        return cachedQuestions.filter { it.questionId.trim() in set }
     }
 
     fun getMistakesGrouped(): Map<String, Map<String, Map<String, List<String>>>> {
-        // exam -> subject -> chapter -> list of wrong questionIds
         val wrongAttempts = cachedAttempts.filter { it.isCorrect == 0 }
         val map = mutableMapOf<String, MutableMap<String, MutableMap<String, MutableList<String>>>>()
 
@@ -222,13 +255,34 @@ class DataService(private val context: Context) {
         return map
     }
 
-    // --- Write Operations ---
+    // --- Media Resolution ---
+    fun resolveMediaUri(relPath: String): Uri? {
+        if (relPath.isBlank()) return null
+        if (relPath.startsWith("http://") || relPath.startsWith("https://")) {
+            return Uri.parse(relPath)
+        }
+        val cleanRel = relPath.trimStart('/')
+        val uri = externalTreeUri
+        if (uri != null) {
+            val doc = findDocumentFile(uri, cleanRel)
+            if (doc != null && doc.exists()) {
+                return doc.uri
+            }
+        }
+        // Fallback to local
+        val f = File(localDataDir, cleanRel)
+        return if (f.exists()) Uri.fromFile(f) else null
+    }
+
+    // --- Write Operations (Gap 1: Writes ISO-8601 with offset) ---
     suspend fun appendAttempt(
         question: QuestionItem,
         chosenAnswer: String,
         isCorrect: Boolean,
         timeSpentSec: Int
     ) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val isoTimestamp = CsvHelper.formatIsoTimestamp(now)
         val log = AttemptLog(
             attemptId = "att_${UUID.randomUUID().toString().take(8)}",
             questionId = question.questionId,
@@ -238,7 +292,8 @@ class DataService(private val context: Context) {
             chosenAnswer = chosenAnswer,
             isCorrect = if (isCorrect) 1 else 0,
             timeSpentSec = timeSpentSec,
-            timestamp = System.currentTimeMillis()
+            timestamp = now,
+            rawTimestamp = isoTimestamp
         )
         cachedAttempts = cachedAttempts + log
         appendToFile("logs/attempts.csv", CsvHelper.formatAttemptLine(log), CsvHelper.ATTEMPTS_HEADER)
@@ -258,7 +313,9 @@ class DataService(private val context: Context) {
             chapter = note.chapter,
             openedAt = openedAt,
             closedAt = closedAt,
-            timeSpentSec = timeSpentSec
+            timeSpentSec = timeSpentSec,
+            rawOpenedAt = CsvHelper.formatIsoTimestamp(openedAt),
+            rawClosedAt = CsvHelper.formatIsoTimestamp(closedAt)
         )
         cachedNoteUsage = cachedNoteUsage + log
         appendToFile("logs/notes_usage.csv", CsvHelper.formatNoteUsageLine(log), CsvHelper.NOTES_USAGE_HEADER)
@@ -280,60 +337,90 @@ class DataService(private val context: Context) {
             openedAt = openedAt,
             closedAt = closedAt,
             timeSpentSec = timeSpentSec,
-            startedTest = if (startedTest) 1 else 0
+            startedTest = if (startedTest) 1 else 0,
+            rawOpenedAt = CsvHelper.formatIsoTimestamp(openedAt),
+            rawClosedAt = CsvHelper.formatIsoTimestamp(closedAt)
         )
         cachedVideoUsage = cachedVideoUsage + log
         appendToFile("logs/video_usage.csv", CsvHelper.formatVideoUsageLine(log), CsvHelper.VIDEO_USAGE_HEADER)
     }
 
-    // --- Dashboard Stats Computation ---
+    // --- Dashboard Stats Computation (Gap 1, Gap 9) ---
     fun dashboardStats(): DashboardStats {
         val totalQuestions = cachedQuestions.size
+        val totalAttempts = cachedAttempts.size
+
         if (cachedAttempts.isEmpty()) {
-            return DashboardStats(totalQuestions = totalQuestions)
+            return DashboardStats(totalQuestions = totalQuestions, totalAttempts = 0)
         }
 
-        val todayDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val todayAttempts = cachedAttempts.filter {
-            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it.timestamp)) == todayDateStr
+        val todayDate = LocalDate.now()
+        val todayStr = todayDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
+
+        // Today attempts
+        val todayAttempts = cachedAttempts.filter { a ->
+            if (a.timestamp > 0) {
+                try {
+                    val aDate = LocalDate.ofInstant(Instant.ofEpochMilli(a.timestamp), ZoneId.systemDefault())
+                    aDate.format(DateTimeFormatter.ISO_LOCAL_DATE) == todayStr
+                } catch (_: Exception) { false }
+            } else false
         }
 
         val attemptedToday = todayAttempts.size
         val todayCorrect = todayAttempts.count { it.isCorrect == 1 }
-        val todayAccuracy = if (attemptedToday > 0) (todayCorrect.toFloat() / attemptedToday) * 100f else 0f
+        val todayAccuracy = if (attemptedToday > 0) (todayCorrect.toFloat() / attemptedToday) * 100f else null
 
         val totalTime = cachedAttempts.sumOf { it.timeSpentSec }
-        val overallAvgTime = if (cachedAttempts.isNotEmpty()) totalTime / cachedAttempts.size else 0
+        val overallAvgTime = if (cachedAttempts.isNotEmpty()) totalTime / cachedAttempts.size else null
 
-        // Streak computation
-        val attemptDates = cachedAttempts.map {
-            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it.timestamp))
+        // Streak computation based on distinct local dates
+        val attemptDates = cachedAttempts.mapNotNull { a ->
+            if (a.timestamp > 0) {
+                try {
+                    LocalDate.ofInstant(Instant.ofEpochMilli(a.timestamp), ZoneId.systemDefault())
+                } catch (_: Exception) { null }
+            } else null
         }.distinct().sortedDescending()
 
         var streak = 0
-        val cal = Calendar.getInstance()
-        var checkStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-
-        if (attemptDates.contains(checkStr)) {
+        var checkDate = todayDate
+        if (attemptDates.contains(checkDate)) {
             streak++
             while (true) {
-                cal.add(Calendar.DAY_OF_YEAR, -1)
-                checkStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                if (attemptDates.contains(checkStr)) {
+                checkDate = checkDate.minusDays(1)
+                if (attemptDates.contains(checkDate)) {
+                    streak++
+                } else break
+            }
+        } else if (attemptDates.contains(todayDate.minusDays(1))) {
+            // Did attempts yesterday, streak can count from yesterday
+            checkDate = todayDate.minusDays(1)
+            streak++
+            while (true) {
+                checkDate = checkDate.minusDays(1)
+                if (attemptDates.contains(checkDate)) {
                     streak++
                 } else break
             }
         }
 
-        // Daily attempts for chart (last 7 recorded dates)
-        val dailyMap = mutableMapOf<String, Int>()
-        for (a in cachedAttempts) {
-            val d = SimpleDateFormat("MM-dd", Locale.US).format(Date(a.timestamp))
-            dailyMap[d] = (dailyMap[d] ?: 0) + 1
-        }
-        val dailyList = dailyMap.toList().takeLast(7)
+        // Daily attempts list (grouped by ISO date string, e.g. 2026-09-27, 28, 29)
+        val dailyGroups = cachedAttempts.groupBy { a ->
+            try {
+                LocalDate.ofInstant(Instant.ofEpochMilli(a.timestamp), ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ISO_LOCAL_DATE)
+            } catch (_: Exception) { "Unknown" }
+        }.filterKeys { it != "Unknown" }
 
-        // Chapter stats (group by exam + subject + chapter)
+        val dailyList = dailyGroups.map { (dateStr, atts) ->
+            val count = atts.size
+            val correct = atts.count { it.isCorrect == 1 }
+            val acc = if (count > 0) (correct.toFloat() / count) * 100f else 0f
+            DailyAttemptStat(date = dateStr, count = count, correctCount = correct, accuracyPercent = acc)
+        }.sortedBy { it.date }.takeLast(7)
+
+        // Chapter stats (group by full path: exam • subject • chapter)
         val chapterGroups = cachedAttempts.groupBy { "${it.exam}|${it.subject}|${it.chapter}" }
         val chapterStatItems = mutableListOf<ChapterStatItem>()
 
@@ -360,13 +447,16 @@ class DataService(private val context: Context) {
             )
         }
 
-        // Strong vs weak chapters (accuracy based)
+        // Weak vs Strong chapters (with full "Exam • Subject • Chapter" label)
         val sortedByAcc = chapterStatItems.sortedBy { it.accuracyPercent }
-        val weakChapters = sortedByAcc.filter { it.accuracyPercent < 60f }.map { it.chapter to it.accuracyPercent }.take(3)
-        val strongChapters = sortedByAcc.filter { it.accuracyPercent >= 60f }.reversed().map { it.chapter to it.accuracyPercent }.take(3)
+        val weakChapters = sortedByAcc.filter { it.accuracyPercent < 60f }
+            .map { it.fullPathLabel to it.accuracyPercent }.take(3)
+        val strongChapters = sortedByAcc.filter { it.accuracyPercent >= 60f }.reversed()
+            .map { it.fullPathLabel to it.accuracyPercent }.take(3)
 
         return DashboardStats(
             totalQuestions = totalQuestions,
+            totalAttempts = totalAttempts,
             attemptedToday = attemptedToday,
             streakDays = streak,
             overallAvgTimeSec = overallAvgTime,
@@ -384,7 +474,7 @@ class DataService(private val context: Context) {
         if (fileContent != null && fileContent.isNotBlank()) {
             fileContent
         } else {
-            "Note content at '$filePath' not found or empty.\n(Relative to Data/ folder)"
+            "Note content at '$filePath' not found or file missing in Data/ folder."
         }
     }
 

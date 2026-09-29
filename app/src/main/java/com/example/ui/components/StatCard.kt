@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,18 +28,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.PoliceGoldDark
-import com.example.ui.theme.PoliceGoldLight
-import com.example.ui.theme.PoliceNavyLight
-import com.example.ui.theme.PoliceNavyPrimary
-import com.example.ui.theme.PoliceRedTertiary
+import com.example.ui.theme.AppPrimary
+import com.example.ui.theme.EasySolid
+import com.example.ui.theme.HardSolid
+import com.example.ui.theme.MediumSolid
 
 @Composable
 fun StatCard(
     title: String,
     value: String,
     icon: ImageVector,
-    accentColor: Color = PoliceNavyPrimary,
+    accentColor: Color = AppPrimary,
     modifier: Modifier = Modifier,
     subtitle: String? = null
 ) {
@@ -48,7 +48,8 @@ fun StatCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             modifier = Modifier
@@ -58,7 +59,7 @@ fun StatCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(accentColor.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
@@ -67,25 +68,23 @@ fun StatCard(
                     imageVector = icon,
                     contentDescription = null,
                     tint = accentColor,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
+
             Spacer(modifier = Modifier.width(12.dp))
+
             Column {
                 Text(
-                    text = value,
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    text = title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
-                    )
+                    text = value,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 if (subtitle != null) {
                     Text(
@@ -109,13 +108,13 @@ fun SectionBadge(
 ) {
     val (badgeBg, badgeText) = when {
         subject.contains("Hindi", ignoreCase = true) || subject.contains("हिन्दी") ->
-            Pair(Color(0xFFE3F2FD), Color(0xFF0D47A1))
+            Pair(AppPrimary.copy(alpha = 0.12f), AppPrimary)
         subject.contains("Law", ignoreCase = true) || subject.contains("विधि") ->
-            Pair(Color(0xFFFFEBEE), Color(0xFFB71C1C))
+            Pair(HardSolid.copy(alpha = 0.12f), HardSolid)
         subject.contains("Numerical", ignoreCase = true) || subject.contains("गणित") || subject.contains("संख्यात्मक") ->
-            Pair(Color(0xFFE8F5E9), Color(0xFF1B5E20))
+            Pair(EasySolid.copy(alpha = 0.12f), EasySolid)
         else ->
-            Pair(Color(0xFFFFF8E1), Color(0xFFF57F17))
+            Pair(MediumSolid.copy(alpha = 0.12f), MediumSolid)
     }
 
     Surface(

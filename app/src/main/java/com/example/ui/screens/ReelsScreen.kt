@@ -1,7 +1,8 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.annotation.OptIn
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,22 +19,13 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Quiz
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,9 +33,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,9 +41,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.example.data.model.DrillDownFilter
 import com.example.data.model.TestSliceSource
 import com.example.data.model.VideoItem
@@ -66,22 +63,28 @@ fun ReelsScreen(
     viewModel: ExamPrepViewModel,
     onStartTestSlice: (TestSliceSource) -> Unit
 ) {
-    val drillFilter by viewModel.drillFilter.collectAsState()
+    val reelsFilter by viewModel.reelsFilter.collectAsState()
 
-    if (drillFilter.exam == null || drillFilter.subject == null || drillFilter.chapter == null) {
+    if (reelsFilter.exam == null) {
         DrillDownSelector(
-            title = "Reels: Choose Subject & Chapter",
+            title = "Reels: Choose Exam or Subject",
             exams = viewModel.listExams(),
-            currentFilter = drillFilter,
+            currentFilter = reelsFilter,
             getSubjects = { viewModel.listSubjects(it) },
             getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
             getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
-            onFilterChanged = { viewModel.setFilter(it) },
-            onSliceReady = { viewModel.setFilter(it) }
+            onFilterChanged = { viewModel.setReelsFilter(it) },
+            onSliceReady = { viewModel.setReelsFilter(it) }
         )
     } else {
-        // Videos filtered strictly for this slice ONLY (never mix other subjects)
-        val videos = remember(drillFilter) { viewModel.videosForSlice(drillFilter) }
+        val rawVideos = remember(reelsFilter) { viewModel.videosForSlice(reelsFilter) }
+        val videos = remember(rawVideos, reelsFilter) {
+            when {
+                reelsFilter.chapter != null -> rawVideos
+                reelsFilter.subject != null -> rawVideos.sortedBy { it.chapter }
+                else -> rawVideos.sortedWith(compareBy({ it.subject }, { it.chapter }))
+            }
+        }
 
         if (videos.isEmpty()) {
             Column(
@@ -92,18 +95,18 @@ fun ReelsScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "No video reels found for ${drillFilter.chapter}",
+                    text = "No video reels found matching filter.",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(
                     onClick = {
-                        viewModel.setFilter(drillFilter.copy(chapter = null))
+                        viewModel.setReelsFilter(DrillDownFilter())
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                 ) {
-                    Text("Choose Another Chapter")
+                    Text("Change Filter", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         } else {
@@ -115,23 +118,21 @@ fun ReelsScreen(
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     val video = videos[page]
-                    ReelVideoItem(
+                    ReelVideoPlayerItem(
                         video = video,
+                        viewModel = viewModel,
                         onTestFromVideo = {
                             onStartTestSlice(TestSliceSource.VideoRevision(video.videoId, video.title))
-                        },
-                        onLogUsage = { openedAt, timeSpent, startedTest ->
-                            viewModel.closeVideo(video, openedAt, timeSpent, startedTest)
                         }
                     )
                 }
 
-                // Top Floating Slice Filter Bar
+                // Top Floating Slice Filter Bar (on #000000 55% scrim)
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter),
-                    color = Color.Black.copy(alpha = 0.5f)
+                    color = Color(0x8C000000)
                 ) {
                     Row(
                         modifier = Modifier
@@ -140,28 +141,36 @@ fun ReelsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
+                            val label = when {
+                                reelsFilter.chapter != null -> "Chapter: ${reelsFilter.chapter}"
+                                reelsFilter.subject != null -> "Subject: ${reelsFilter.subject}"
+                                else -> "Exam: ${reelsFilter.exam}"
+                            }
                             Text(
-                                text = "Reels: ${drillFilter.chapter}",
+                                text = "Reels • $label",
                                 color = Color.White,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "${drillFilter.exam} • ${drillFilter.subject}",
-                                color = Color.LightGray,
+                                text = "${videos.size} reel(s) in feed",
+                                color = Color.White.copy(alpha = 0.8f),
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
 
                         Button(
                             onClick = {
-                                viewModel.setFilter(drillFilter.copy(chapter = null))
+                                viewModel.setReelsFilter(DrillDownFilter())
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.25f)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
                             modifier = Modifier.height(34.dp)
                         ) {
-                            Text("Switch", color = Color.White, fontSize = 12.sp)
+                            Text("Switch", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -170,140 +179,155 @@ fun ReelsScreen(
     }
 }
 
+@OptIn(UnstableApi::class)
 @Composable
-fun ReelVideoItem(
+fun ReelVideoPlayerItem(
     video: VideoItem,
-    onTestFromVideo: () -> Unit,
-    onLogUsage: (openedAt: Long, timeSpentSec: Int, startedTest: Boolean) -> Unit
+    viewModel: ExamPrepViewModel,
+    onTestFromVideo: () -> Unit
 ) {
+    val context = LocalContext.current
     val openedAt = remember { System.currentTimeMillis() }
-    var isPlaying by remember { mutableStateOf(true) }
-    var currentSeconds by remember { mutableFloatStateOf(0f) }
-    val totalSeconds = video.durationSec.toFloat().coerceAtLeast(60f)
+    var secondsPlayed by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(isPlaying) {
-        while (isPlaying && currentSeconds < totalSeconds) {
+    LaunchedEffect(Unit) {
+        while (true) {
             delay(1000)
-            currentSeconds = (currentSeconds + 1f).coerceAtMost(totalSeconds)
+            secondsPlayed++
         }
+    }
+
+    val videoUri = remember(video.videoPath) {
+        viewModel.resolveMediaUri(video.videoPath)
+    }
+
+    val exoPlayer = remember(video.videoId, videoUri) {
+        if (videoUri != null) {
+            try {
+                ExoPlayer.Builder(context).build().apply {
+                    setMediaItem(MediaItem.fromUri(videoUri))
+                    prepare()
+                    playWhenReady = true
+                    repeatMode = Player.REPEAT_MODE_ONE
+                }
+            } catch (_: Exception) {
+                null
+            }
+        } else null
     }
 
     DisposableEffect(video.videoId) {
         onDispose {
-            onLogUsage(openedAt, currentSeconds.toInt(), false)
+            exoPlayer?.release()
+            viewModel.closeVideo(video, openedAt, secondsPlayed, false)
         }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0F1D))
+            .background(Color.Black)
     ) {
-        // Video Visualizer / Canvas Center
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
+        if (videoUri != null && exoPlayer != null) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = false
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            // Missing file on #000000 55% scrim
+            Column(
                 modifier = Modifier
-                    .size(90.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF0D47A1).copy(alpha = 0.4f)),
-                contentAlignment = Alignment.Center
+                    .align(Alignment.Center)
+                    .background(Color(0x8C000000), shape = RoundedCornerShape(16.dp))
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                IconButton(onClick = { isPlaying = !isPlaying }) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF2A2A2A)),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Play/Pause",
-                        tint = Color.White,
-                        modifier = Modifier.size(54.dp)
+                        imageVector = Icons.Default.VideoFile,
+                        contentDescription = null,
+                        tint = Color.LightGray,
+                        modifier = Modifier.size(44.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = video.title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "${video.subject} • ${video.chapter}",
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "Path: ${video.videoPath} (file not found)",
+                    color = Color.LightGray,
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = video.title,
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "${video.chapter} • ${video.topic}",
-                color = Color(0xFF90CAF9),
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Path: ${video.videoPath}",
-                color = Color.Gray,
-                style = MaterialTheme.typography.labelSmall
-            )
         }
 
-        // Bottom Controls Overlay
+        // Bottom Controls Overlay (#000000 55% scrim)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f), Color.Black)
+                        listOf(Color.Transparent, Color(0x8C000000), Color(0xCC000000))
                     )
                 )
                 .padding(20.dp)
         ) {
-            // Scrubber
-            Slider(
-                value = currentSeconds,
-                onValueChange = { currentSeconds = it },
-                valueRange = 0f..totalSeconds,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF42A5F5),
-                    activeTrackColor = Color(0xFF42A5F5),
-                    inactiveTrackColor = Color.DarkGray
-                ),
-                modifier = Modifier.height(16.dp)
+            Text(
+                text = video.title,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "${video.subject} • ${video.chapter} • ${video.durationSec / 60} mins",
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodySmall
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                val curMin = currentSeconds.toInt() / 60
-                val curSec = currentSeconds.toInt() % 60
-                val totMin = totalSeconds.toInt() / 60
-                val totSec = totalSeconds.toInt() % 60
+            Spacer(modifier = Modifier.height(14.dp))
 
-                Text(
-                    text = String.format("%02d:%02d / %02d:%02d", curMin, curSec, totMin, totSec),
-                    color = Color.LightGray,
-                    style = MaterialTheme.typography.labelSmall
-                )
-
-                Text(
-                    text = "Swipe up for next reel",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Action: Test from this video (started_test = 1)
+            // Action: Test from this video (Primary / OnPrimary)
             Button(
                 onClick = {
-                    onLogUsage(openedAt, currentSeconds.toInt(), true)
+                    viewModel.closeVideo(video, openedAt, secondsPlayed, true)
                     onTestFromVideo()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))

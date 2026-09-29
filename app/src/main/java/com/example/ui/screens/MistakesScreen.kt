@@ -1,7 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,16 +32,20 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DrillDownFilter
 import com.example.data.model.TestSliceSource
+import com.example.ui.theme.EasySolid
+import com.example.ui.theme.HardSolid
+import com.example.ui.theme.HardTint
 import com.example.ui.viewmodel.ExamPrepViewModel
 
 @Composable
@@ -50,7 +54,8 @@ fun MistakesScreen(
     onStartTestSlice: (TestSliceSource) -> Unit,
     onOpenNotesForChapter: (DrillDownFilter) -> Unit
 ) {
-    val mistakesMap = remember { viewModel.getMistakesGrouped() }
+    val stats by viewModel.dashboardStats.collectAsState()
+    val mistakesMap = remember(stats) { viewModel.getMistakesGrouped() }
 
     Column(
         modifier = Modifier
@@ -60,15 +65,17 @@ fun MistakesScreen(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp
+            tonalElevation = 2.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "Mistakes Notebook",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFC62828)
+                    color = HardSolid
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Grouped by Exam → Subject → Chapter from attempts.csv (is_correct = 0)",
                     style = MaterialTheme.typography.bodySmall,
@@ -88,14 +95,15 @@ fun MistakesScreen(
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = Color(0xFF2E7D32),
+                        tint = EasySolid,
                         modifier = Modifier.size(64.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = "No recorded mistakes!",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -119,7 +127,7 @@ fun MistakesScreen(
                             text = "Exam: $exam",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0D47A1)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -141,7 +149,8 @@ fun MistakesScreen(
                                     .padding(start = 12.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Row(
@@ -153,12 +162,13 @@ fun MistakesScreen(
                                             Text(
                                                 text = chapter,
                                                 style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
                                                 text = "${qIds.size} wrong question(s)",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFFC62828),
+                                                color = HardSolid,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
@@ -167,13 +177,13 @@ fun MistakesScreen(
                                             modifier = Modifier
                                                 .size(28.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFFFFEBEE)),
+                                                .background(HardTint),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
                                                 Icons.Default.ErrorOutline,
                                                 contentDescription = null,
-                                                tint = Color(0xFFC62828),
+                                                tint = HardSolid,
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
@@ -197,11 +207,14 @@ fun MistakesScreen(
                                                 )
                                             },
                                             modifier = Modifier.weight(1f),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            )
                                         ) {
                                             Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Retest", fontSize = 12.sp)
+                                            Text("Retest", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
 
                                         OutlinedButton(
@@ -214,11 +227,15 @@ fun MistakesScreen(
                                                     )
                                                 )
                                             },
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier.weight(1f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                contentColor = MaterialTheme.colorScheme.onSurface
+                                            )
                                         ) {
                                             Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Open Notes", fontSize = 12.sp)
+                                            Text("Open Notes", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                         }
                                     }
                                 }

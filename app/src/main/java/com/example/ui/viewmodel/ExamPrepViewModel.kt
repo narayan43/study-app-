@@ -20,8 +20,15 @@ class ExamPrepViewModel(
     private val dataService: DataService
 ) : ViewModel() {
 
-    private val _drillFilter = MutableStateFlow(DrillDownFilter())
-    val drillFilter: StateFlow<DrillDownFilter> = _drillFilter.asStateFlow()
+    // Gap 6: Distinct filter per tab
+    private val _testFilter = MutableStateFlow(DrillDownFilter())
+    val testFilter: StateFlow<DrillDownFilter> = _testFilter.asStateFlow()
+
+    private val _notesFilter = MutableStateFlow(DrillDownFilter())
+    val notesFilter: StateFlow<DrillDownFilter> = _notesFilter.asStateFlow()
+
+    private val _reelsFilter = MutableStateFlow(DrillDownFilter())
+    val reelsFilter: StateFlow<DrillDownFilter> = _reelsFilter.asStateFlow()
 
     private val _dashboardStats = MutableStateFlow(DashboardStats())
     val dashboardStats: StateFlow<DashboardStats> = _dashboardStats.asStateFlow()
@@ -47,14 +54,31 @@ class ExamPrepViewModel(
     private val _isFolderLinked = MutableStateFlow(dataService.isFolderLinked())
     val isFolderLinked: StateFlow<Boolean> = _isFolderLinked.asStateFlow()
 
+    private val _isDarkTheme = MutableStateFlow(dataService.isDarkTheme())
+    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+
+    fun toggleTheme() {
+        val next = !_isDarkTheme.value
+        _isDarkTheme.value = next
+        dataService.setDarkTheme(next)
+    }
+
     init {
         viewModelScope.launch {
             reloadData()
         }
     }
 
-    fun setFilter(filter: DrillDownFilter) {
-        _drillFilter.value = filter
+    fun setTestFilter(filter: DrillDownFilter) {
+        _testFilter.value = filter
+    }
+
+    fun setNotesFilter(filter: DrillDownFilter) {
+        _notesFilter.value = filter
+    }
+
+    fun setReelsFilter(filter: DrillDownFilter) {
+        _reelsFilter.value = filter
     }
 
     suspend fun reloadData() {
@@ -67,6 +91,13 @@ class ExamPrepViewModel(
     fun linkDataFolder(uri: Uri) {
         viewModelScope.launch {
             dataService.linkDataFolder(uri)
+            reloadData()
+        }
+    }
+
+    fun unlinkDataFolder() {
+        viewModelScope.launch {
+            dataService.unlinkFolder()
             reloadData()
         }
     }
@@ -92,6 +123,11 @@ class ExamPrepViewModel(
             is TestSliceSource.MistakesRetest -> dataService.getQuestionsByIds(source.questionIds)
         }
         _activeTestQuestions.value = questions
+    }
+
+    fun clearActiveTest() {
+        _activeTestQuestions.value = emptyList()
+        _activeTestSource.value = null
     }
 
     fun submitAttempt(question: QuestionItem, chosenAnswer: String, isCorrect: Boolean, timeSpentSec: Int) {
@@ -130,7 +166,9 @@ class ExamPrepViewModel(
     fun notesForSlice(filter: DrillDownFilter): List<NoteItem> = dataService.notesFor(filter)
     fun videosForSlice(filter: DrillDownFilter): List<VideoItem> = dataService.videosFor(filter)
     fun notesForQuestion(questionId: String): List<NoteItem> = dataService.notesForQuestion(questionId)
+    fun videosForQuestion(questionId: String): List<VideoItem> = dataService.videosForQuestion(questionId)
     fun getMistakesGrouped(): Map<String, Map<String, Map<String, List<String>>>> = dataService.getMistakesGrouped()
+    fun resolveMediaUri(relPath: String): Uri? = dataService.resolveMediaUri(relPath)
 }
 
 class ExamPrepViewModelFactory(

@@ -82,4 +82,21 @@ class ExampleUnitTest {
         assertEquals(1, parsed[0].isCorrect)
         assertEquals(15, parsed[0].timeSpentSec)
     }
+
+    @Test
+    fun testIso8601TimestampParse() {
+        val isoStr = "2026-09-27T10:12:00+05:30"
+        val parsedMillis = CsvHelper.parseTimestamp(isoStr)
+        assertTrue(parsedMillis > 0L)
+
+        val csv = """
+            ${CsvHelper.ATTEMPTS_HEADER}
+            att_iso,Q001,UPSI,Polity,Preamble,A,1,14,2026-09-27T10:12:00+05:30
+        """.trimIndent()
+        val parsed = CsvHelper.parseAttempts(csv)
+        assertEquals(1, parsed.size)
+        assertEquals("att_iso", parsed[0].attemptId)
+        assertEquals(parsedMillis, parsed[0].timestamp)
+        assertTrue(parsed[0].rawTimestamp.contains("2026-09-27"))
+    }
 }

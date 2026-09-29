@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Refresh
@@ -54,6 +56,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.EasySolid
+import com.example.ui.theme.EasyTint
+import com.example.ui.theme.HardSolid
+import com.example.ui.theme.HardTint
+import com.example.ui.theme.MediumSolid
 import com.example.ui.viewmodel.ExamPrepViewModel
 import kotlinx.coroutines.launch
 
@@ -76,15 +83,14 @@ fun DashboardScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- Storage Status & Linking Card ---
+        // --- Folder Card: Surface, title TextPrimary, path TextSecondary, Link/Reset buttons ---
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isFolderLinked) Color(0xFFE8F5E9) else Color(0xFFE3F2FD)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -96,58 +102,84 @@ fun DashboardScreen(
                             Icon(
                                 imageVector = if (isFolderLinked) Icons.Default.FolderOpen else Icons.Default.Folder,
                                 contentDescription = null,
-                                tint = if (isFolderLinked) Color(0xFF2E7D32) else Color(0xFF1565C0),
+                                tint = if (isFolderLinked) EasySolid else MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (isFolderLinked) "External Data Linked" else "Default Demo Data (Internal)",
+                                text = if (isFolderLinked) "External Data/ Folder Linked" else "Internal Demo Data",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isFolderLinked) Color(0xFF1B5E20) else Color(0xFF0D47A1)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
 
                         IconButton(
                             onClick = { scope.launch { viewModel.reloadData() } }
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = Color(0xFF0D47A1))
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Reload",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Path: $folderPath",
+                        text = "URI / Path: $folderPath",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.DarkGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = onPickFolder,
                             modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         ) {
-                            Text(if (isFolderLinked) "Change Folder" else "Link Data Folder")
+                            Text(if (isFolderLinked) "Change Folder" else "Link Data Folder", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
-                        OutlinedButton(
-                            onClick = { viewModel.resetToDemoData() },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Reset Demo")
+                        if (isFolderLinked) {
+                            OutlinedButton(
+                                onClick = { viewModel.unlinkDataFolder() },
+                                modifier = Modifier.weight(1f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Icon(Icons.Default.LinkOff, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Unlink", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { viewModel.resetToDemoData() },
+                                modifier = Modifier.weight(1f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Reset Demo", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
             }
         }
 
-        // --- Metric KPI Cards ---
+        // --- Stat Cards: Surface, label TextSecondary, number TextPrimary, small caption TextSecondary ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -156,18 +188,19 @@ fun DashboardScreen(
                 MetricCard(
                     title = "Total Questions",
                     value = "${stats.totalQuestions}",
-                    subtitle = "In questions.csv",
+                    subtitle = "questions.csv",
                     icon = Icons.Default.Quiz,
-                    color = Color(0xFF1565C0),
+                    iconColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
                 )
 
                 MetricCard(
                     title = "Attempted Today",
-                    value = "${stats.attemptedToday}",
-                    subtitle = if (stats.attemptedToday > 0) "${stats.todayAccuracyPercent.toInt()}% correct" else "No attempts today",
+                    value = if (stats.attemptedToday > 0) "${stats.attemptedToday}" else "0",
+                    subtitle = if (stats.attemptedToday > 0 && stats.todayAccuracyPercent != null)
+                        "${stats.todayAccuracyPercent!!.toInt()}% accuracy" else "No attempts today",
                     icon = Icons.Default.CheckCircle,
-                    color = Color(0xFF2E7D32),
+                    iconColor = EasySolid,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -180,29 +213,30 @@ fun DashboardScreen(
             ) {
                 MetricCard(
                     title = "Streak",
-                    value = "${stats.streakDays} Days",
-                    subtitle = if (stats.streakDays > 0) "Consecutive study" else "Start today!",
+                    value = if (stats.streakDays > 0) "${stats.streakDays} Days" else "0 Days",
+                    subtitle = if (stats.streakDays > 0) "Consistent learning" else "Start practicing today",
                     icon = Icons.Default.LocalFireDepartment,
-                    color = Color(0xFFE65100),
+                    iconColor = MediumSolid,
                     modifier = Modifier.weight(1f)
                 )
 
                 MetricCard(
                     title = "Overall Avg Time",
-                    value = "${stats.overallAvgTimeSec}s",
-                    subtitle = "Per question speed",
+                    value = if (stats.overallAvgTimeSec != null) "${stats.overallAvgTimeSec}s" else "—",
+                    subtitle = if (stats.overallAvgTimeSec != null) "Per question speed" else "No logs yet",
                     icon = Icons.Default.Timer,
-                    color = Color(0xFF6A1B9A),
+                    iconColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
                 )
             }
         }
 
-        // --- Overall Avg Time callout above charts ---
+        // --- Overall Avg Speed callout ---
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Row(
@@ -212,40 +246,46 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Overall Average Speed",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (stats.overallAvgTimeSec > 0) "${stats.overallAvgTimeSec} seconds per question across all logs" else "No attempts logged yet",
+                            text = if (stats.overallAvgTimeSec != null)
+                                "${stats.overallAvgTimeSec} seconds per question across ${stats.totalAttempts} total attempt(s)"
+                            else "No attempt logs found in attempts.csv",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Text(
-                        text = "${stats.overallAvgTimeSec}s",
+                        text = if (stats.overallAvgTimeSec != null) "${stats.overallAvgTimeSec}s" else "—",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF0D47A1)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
         }
 
-        // --- Daily Attempts Chart ---
+        // --- Chart card: Surface. Bars Primary. Axis labels TextSecondary. Accuracy % TextPrimary ---
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Daily Attempts (Last 7 Days)",
+                        text = "Daily Activity & Accuracy",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -263,35 +303,43 @@ fun DashboardScreen(
                             )
                         }
                     } else {
-                        val maxCount = stats.dailyAttempts.maxOf { it.second }.coerceAtLeast(1)
+                        val maxCount = stats.dailyAttempts.maxOf { it.count }.coerceAtLeast(1)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(120.dp),
+                                .height(140.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            stats.dailyAttempts.forEach { (day, count) ->
+                            stats.dailyAttempts.forEach { item ->
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Bottom
                                 ) {
                                     Text(
-                                        text = "$count",
+                                        text = "${item.accuracyPercent.toInt()}%",
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (item.accuracyPercent >= 60f) EasySolid else HardSolid
+                                    )
+                                    Text(
+                                        text = "${item.count}q",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Box(
                                         modifier = Modifier
-                                            .width(24.dp)
-                                            .height(((count.toFloat() / maxCount) * 80).coerceAtLeast(6f).dp)
+                                            .width(26.dp)
+                                            .height(((item.count.toFloat() / maxCount) * 80).coerceAtLeast(8f).dp)
                                             .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                            .background(Color(0xFF0D47A1))
+                                            .background(MaterialTheme.colorScheme.primary)
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = day,
+                                        text = item.date.takeLast(5),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -304,7 +352,7 @@ fun DashboardScreen(
             }
         }
 
-        // --- Weak vs Strong Chapters ---
+        // --- Weak vs Strong Chapters: Weak list: HardSolid labels. Strong list: EasySolid labels. Values TextPrimary ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -313,20 +361,21 @@ fun DashboardScreen(
                 // Weak Chapters
                 Card(
                     modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.TrendingDown, contentDescription = null, tint = Color(0xFFC62828), modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.TrendingDown, contentDescription = null, tint = HardSolid, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Weak Chapters", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                            Text("Weak Chapters", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = HardSolid)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         if (stats.weakChapters.isEmpty()) {
-                            Text("No weak chapters logged (<60%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("None (<60%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
-                            stats.weakChapters.forEach { (chap, acc) ->
-                                Text("• $chap: ${acc.toInt()}%", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                            stats.weakChapters.forEach { (label, acc) ->
+                                Text("• $label: ${acc.toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp)
                             }
                         }
                     }
@@ -335,20 +384,21 @@ fun DashboardScreen(
                 // Strong Chapters
                 Card(
                     modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = EasySolid, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Strong Chapters", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                            Text("Strong Chapters", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = EasySolid)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         if (stats.strongChapters.isEmpty()) {
-                            Text("No strong chapters logged (≥60%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("None (≥60%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
-                            stats.strongChapters.forEach { (chap, acc) ->
-                                Text("• $chap: ${acc.toInt()}%", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                            stats.strongChapters.forEach { (label, acc) ->
+                                Text("• $label: ${acc.toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp)
                             }
                         }
                     }
@@ -360,19 +410,21 @@ fun DashboardScreen(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "Chapter Performance Breakdown",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(10.dp))
 
                     if (stats.chapterStats.isEmpty()) {
                         Text(
-                            text = "No chapter statistics available yet. Start practicing from the Test tab to populate analytics!",
+                            text = "No chapter statistics available yet. Answer questions in the Test tab!",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -384,16 +436,17 @@ fun DashboardScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "${item.chapter} (${item.exam})",
+                                        text = item.fullPathLabel,
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
-                                        text = "${item.accuracyPercent.toInt()}% • ${item.avgTimeSec}s avg",
+                                        text = "${item.accuracyPercent.toInt()}% • ${item.avgTimeSec}s avg (${item.totalAttempts} att)",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = if (item.accuracyPercent >= 60f) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                        color = if (item.accuracyPercent >= 60f) EasySolid else HardSolid,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -404,8 +457,8 @@ fun DashboardScreen(
                                         .fillMaxWidth()
                                         .height(6.dp)
                                         .clip(RoundedCornerShape(3.dp)),
-                                    color = if (item.accuracyPercent >= 60f) Color(0xFF2E7D32) else Color(0xFFC62828),
-                                    trackColor = Color(0xFFEEEEEE)
+                                    color = if (item.accuracyPercent >= 60f) EasySolid else HardSolid,
+                                    trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                                 )
                             }
                         }
@@ -422,14 +475,15 @@ fun MetricCard(
     value: String,
     subtitle: String,
     icon: ImageVector,
-    color: Color,
+    iconColor: Color,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -446,10 +500,10 @@ fun MetricCard(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(color.copy(alpha = 0.12f)),
+                        .background(iconColor.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+                    Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(18.dp))
                 }
             }
 

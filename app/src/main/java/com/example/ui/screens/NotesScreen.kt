@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -62,7 +62,7 @@ fun NotesScreen(
     viewModel: ExamPrepViewModel,
     onStartTestSlice: (TestSliceSource) -> Unit
 ) {
-    val drillFilter by viewModel.drillFilter.collectAsState()
+    val notesFilter by viewModel.notesFilter.collectAsState()
     val activeNote by viewModel.activeNote.collectAsState()
     val activeNoteContent by viewModel.activeNoteContent.collectAsState()
 
@@ -89,21 +89,26 @@ fun NotesScreen(
             }
         )
     } else {
-        // Shared drill-down or list of notes for current slice
-        val notes = viewModel.notesForSlice(drillFilter)
-        if (drillFilter.exam == null || drillFilter.subject == null || drillFilter.chapter == null) {
+        if (notesFilter.exam == null) {
             DrillDownSelector(
-                title = "Notes: Choose Exam & Chapter",
+                title = "Notes: Choose Exam or Subject",
                 exams = viewModel.listExams(),
-                currentFilter = drillFilter,
+                currentFilter = notesFilter,
                 getSubjects = { viewModel.listSubjects(it) },
                 getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
                 getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
-                onFilterChanged = { viewModel.setFilter(it) },
-                onSliceReady = { viewModel.setFilter(it) }
+                onFilterChanged = { viewModel.setNotesFilter(it) },
+                onSliceReady = { viewModel.setNotesFilter(it) }
             )
         } else {
-            // Notes list for current slice
+            val notes = viewModel.notesForSlice(notesFilter)
+
+            val sliceLabel = when {
+                notesFilter.chapter != null -> "Chapter: ${notesFilter.chapter}"
+                notesFilter.subject != null -> "Subject: ${notesFilter.subject} (All Chapters)"
+                else -> "Exam: ${notesFilter.exam} (All Subjects)"
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -112,7 +117,8 @@ fun NotesScreen(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp
+                    tonalElevation = 2.dp,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Row(
                         modifier = Modifier
@@ -121,15 +127,15 @@ fun NotesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Notes: ${drillFilter.chapter}",
+                                text = sliceLabel,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0D47A1)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "${drillFilter.exam} • ${drillFilter.subject}",
+                                text = "${notes.size} note(s) found in notes.csv",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -137,10 +143,14 @@ fun NotesScreen(
 
                         OutlinedButton(
                             onClick = {
-                                viewModel.setFilter(drillFilter.copy(chapter = null))
-                            }
+                                viewModel.setNotesFilter(DrillDownFilter())
+                            },
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
                         ) {
-                            Text("Change")
+                            Text("Change Filter", fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -153,7 +163,7 @@ fun NotesScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No notes found for this chapter in notes.csv",
+                            text = "No notes found matching this filter in notes.csv",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -205,7 +215,8 @@ fun NoteCard(
             .clip(RoundedCornerShape(14.dp))
             .clickable { onOpen() },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -213,28 +224,28 @@ fun NoteCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFFE3F2FD))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.background,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Text(
-                        text = note.chapter,
+                        text = "${note.exam} • ${note.chapter}",
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0D47A1)
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
 
                 Text(
                     text = note.noteType,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text(
                 text = note.title,
@@ -259,18 +270,25 @@ fun NoteCard(
                 Button(
                     onClick = onTestNote,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 ) {
                     Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Test from note", fontSize = 12.sp)
+                    Text("Test from note", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
                 OutlinedButton(
                     onClick = onTestChapter,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 ) {
-                    Text("Test whole chapter", fontSize = 12.sp)
+                    Text("Test chapter", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -305,31 +323,34 @@ fun NoteReaderView(
                             text = note.title,
                             maxLines = 1,
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
                         Text(
                             text = "${note.chapter} • ${readSeconds / 60}m ${readSeconds % 60}s",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFBBDEFB)
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                         )
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = { onClose(openedAt, readSeconds) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0D47A1),
-                    titleContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         },
         bottomBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                tonalElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surface
+                tonalElevation = 4.dp,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Row(
                     modifier = Modifier
@@ -343,11 +364,14 @@ fun NoteReaderView(
                             onTestQuestionsFromThisNote()
                         },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     ) {
                         Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Test this note")
+                        Text("Test this note", fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
@@ -355,9 +379,13 @@ fun NoteReaderView(
                             onClose(openedAt, readSeconds)
                             onTestWholeChapter()
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
                     ) {
-                        Text("Test chapter")
+                        Text("Test whole chapter", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -373,7 +401,9 @@ fun NoteReaderView(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(

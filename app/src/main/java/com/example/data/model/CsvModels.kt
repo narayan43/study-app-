@@ -60,7 +60,8 @@ data class AttemptLog(
     val chosenAnswer: String,
     val isCorrect: Int,
     val timeSpentSec: Int,
-    val timestamp: Long
+    val timestamp: Long,
+    val rawTimestamp: String = ""
 )
 
 data class NoteUsageLog(
@@ -71,7 +72,9 @@ data class NoteUsageLog(
     val chapter: String,
     val openedAt: Long,
     val closedAt: Long,
-    val timeSpentSec: Int
+    val timeSpentSec: Int,
+    val rawOpenedAt: String = "",
+    val rawClosedAt: String = ""
 )
 
 data class VideoUsageLog(
@@ -83,7 +86,9 @@ data class VideoUsageLog(
     val openedAt: Long,
     val closedAt: Long,
     val timeSpentSec: Int,
-    val startedTest: Int
+    val startedTest: Int,
+    val rawOpenedAt: String = "",
+    val rawClosedAt: String = ""
 )
 
 data class DrillDownFilter(
@@ -95,20 +100,28 @@ data class DrillDownFilter(
 
 sealed class TestSliceSource {
     data class DrillDown(val filter: DrillDownFilter) : TestSliceSource()
-    data class NoteRevision(val noteId: String, val noteTitle: String) : TestSliceSource()
-    data class VideoRevision(val videoId: String, val videoTitle: String) : TestSliceSource()
+    data class NoteRevision(val noteId: String, val noteTitle: String, val returnToNote: Boolean = true) : TestSliceSource()
+    data class VideoRevision(val videoId: String, val videoTitle: String, val returnToReel: Boolean = true) : TestSliceSource()
     data class MistakesRetest(val exam: String, val subject: String, val chapter: String, val questionIds: List<String>) : TestSliceSource()
 }
 
+data class DailyAttemptStat(
+    val date: String,
+    val count: Int,
+    val correctCount: Int,
+    val accuracyPercent: Float
+)
+
 data class DashboardStats(
     val totalQuestions: Int = 0,
+    val totalAttempts: Int = 0,
     val attemptedToday: Int = 0,
     val streakDays: Int = 0,
-    val overallAvgTimeSec: Int = 0,
-    val todayAccuracyPercent: Float = 0f,
-    val weakChapters: List<Pair<String, Float>> = emptyList(), // (chapter, accuracy)
-    val strongChapters: List<Pair<String, Float>> = emptyList(), // (chapter, accuracy)
-    val dailyAttempts: List<Pair<String, Int>> = emptyList(), // (date, count)
+    val overallAvgTimeSec: Int? = null,
+    val todayAccuracyPercent: Float? = null,
+    val weakChapters: List<Pair<String, Float>> = emptyList(), // "Exam • Subject • Chapter" -> accuracy
+    val strongChapters: List<Pair<String, Float>> = emptyList(),
+    val dailyAttempts: List<DailyAttemptStat> = emptyList(),
     val chapterStats: List<ChapterStatItem> = emptyList()
 )
 
@@ -119,4 +132,6 @@ data class ChapterStatItem(
     val totalAttempts: Int,
     val accuracyPercent: Float,
     val avgTimeSec: Int
-)
+) {
+    val fullPathLabel: String get() = "$exam • $subject • $chapter"
+}

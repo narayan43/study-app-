@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -54,13 +56,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.model.NoteItem
 import com.example.data.model.QuestionItem
 import com.example.data.model.TestSliceSource
+import com.example.data.model.VideoItem
+import com.example.ui.theme.AppBackgroundDark
+import com.example.ui.theme.EasySolid
+import com.example.ui.theme.EasySolidDark
+import com.example.ui.theme.EasyTint
+import com.example.ui.theme.EasyTintDark
+import com.example.ui.theme.HardSolid
+import com.example.ui.theme.HardSolidDark
+import com.example.ui.theme.HardTint
+import com.example.ui.theme.HardTintDark
+import com.example.ui.theme.OnEasy
+import com.example.ui.theme.OnEasyDark
+import com.example.ui.theme.OnHard
+import com.example.ui.theme.OnHardDark
 import com.example.ui.viewmodel.ExamPrepViewModel
 import kotlinx.coroutines.delay
 
@@ -68,11 +85,13 @@ import kotlinx.coroutines.delay
 @Composable
 fun TestPlayerScreen(
     viewModel: ExamPrepViewModel,
-    onBack: () -> Unit,
-    onOpenNoteReader: (NoteItem) -> Unit
+    onBack: (TestSliceSource?) -> Unit,
+    onOpenNoteReader: (NoteItem) -> Unit,
+    onOpenReel: (VideoItem) -> Unit
 ) {
     val questions by viewModel.activeTestQuestions.collectAsState()
     val sliceSource by viewModel.activeTestSource.collectAsState()
+    val isDarkTheme by viewModel.isDarkTheme.collectAsState()
 
     var currentIndex by remember { mutableIntStateOf(0) }
     var selectedOption by remember { mutableStateOf<String?>(null) }
@@ -83,7 +102,7 @@ fun TestPlayerScreen(
     val safeIndex = if (questions.isEmpty()) 0 else currentIndex.coerceIn(0, questions.size - 1)
     val currentQuestion = questions.getOrNull(safeIndex)
 
-    // Timer per question
+    // Timer per question (starts on show, stops on submit)
     LaunchedEffect(safeIndex, isSubmitted) {
         if (!isSubmitted) {
             timerSeconds = 0
@@ -105,12 +124,17 @@ fun TestPlayerScreen(
         if (currentQuestion != null) viewModel.notesForQuestion(currentQuestion.questionId) else emptyList()
     }
 
+    val linkedVideos = remember(currentQuestion) {
+        if (currentQuestion != null) viewModel.videosForQuestion(currentQuestion.questionId) else emptyList()
+    }
+
     val sliceTitle = when (val src = sliceSource) {
-        is TestSliceSource.NoteRevision -> "Note Test: ${src.noteTitle}"
-        is TestSliceSource.VideoRevision -> "Video Test: ${src.videoTitle}"
-        is TestSliceSource.MistakesRetest -> "Mistakes Retest (${src.chapter})"
+        is TestSliceSource.NoteRevision -> "Note Revision: ${src.noteTitle}"
+        is TestSliceSource.VideoRevision -> "Video Revision: ${src.videoTitle}"
+        is TestSliceSource.MistakesRetest -> "Mistakes Retest: ${src.chapter}"
         is TestSliceSource.DrillDown -> {
-            listOfNotNull(src.filter.exam, src.filter.subject, src.filter.chapter).joinToString(" • ")
+            val list = listOfNotNull(src.filter.exam, src.filter.subject, src.filter.chapter, src.filter.topic)
+            if (list.isEmpty()) "All Questions" else list.joinToString(" • ")
         }
         null -> "Test Player"
     }
@@ -121,17 +145,23 @@ fun TestPlayerScreen(
                 TopAppBar(
                     title = { Text(sliceTitle) },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        IconButton(onClick = { onBack(sliceSource) }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                    }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 )
             }
         ) { padding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
+                    .padding(padding)
+                    .background(MaterialTheme.colorScheme.background),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -141,7 +171,13 @@ fun TestPlayerScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = onBack) {
+                    Button(
+                        onClick = { onBack(sliceSource) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
                         Text("Return")
                     }
                 }
@@ -159,18 +195,19 @@ fun TestPlayerScreen(
                             text = sliceTitle,
                             maxLines = 1,
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
                         Text(
                             text = "Question ${safeIndex + 1} of ${questions.size}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFFBBDEFB)
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                         )
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    IconButton(onClick = { onBack(sliceSource) }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onPrimary)
                     }
                 },
                 actions = {
@@ -178,14 +215,14 @@ fun TestPlayerScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.2f))
+                            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f))
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.Timer, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${timerSeconds}s",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -193,15 +230,17 @@ fun TestPlayerScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0D47A1),
-                    titleContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         },
         bottomBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                tonalElevation = 6.dp,
+                tonalElevation = 4.dp,
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Row(
@@ -211,13 +250,19 @@ fun TestPlayerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Previous: outline, Divider border, TextPrimary (not 30% white)
                     OutlinedButton(
                         onClick = {
                             if (safeIndex > 0) currentIndex = safeIndex - 1
                         },
-                        enabled = safeIndex > 0
+                        enabled = safeIndex > 0,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        )
                     ) {
-                        Text("Previous")
+                        Text("Previous", fontWeight = FontWeight.SemiBold)
                     }
 
                     if (!isSubmitted) {
@@ -230,9 +275,12 @@ fun TestPlayerScreen(
                                 }
                             },
                             enabled = selectedOption != null,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         ) {
-                            Text("Submit Answer")
+                            Text("Submit Answer", fontWeight = FontWeight.Bold)
                         }
                     } else {
                         Button(
@@ -240,12 +288,15 @@ fun TestPlayerScreen(
                                 if (safeIndex < questions.size - 1) {
                                     currentIndex = safeIndex + 1
                                 } else {
-                                    onBack()
+                                    onBack(sliceSource)
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         ) {
-                            Text(if (safeIndex < questions.size - 1) "Next Question" else "Finish Test")
+                            Text(if (safeIndex < questions.size - 1) "Next Question" else "Finish Test", fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
@@ -262,46 +313,49 @@ fun TestPlayerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Chapter and Topic badge
+            // Chapter and Topic badge (Chips: Divider border, TextSecondary)
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFFE3F2FD))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier.padding(vertical = 2.dp)
                     ) {
                         Text(
-                            text = currentQuestion.chapter,
+                            text = "${currentQuestion.exam} • ${currentQuestion.chapter}",
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0D47A1)
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
 
                     if (currentQuestion.topic.isNotBlank()) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            modifier = Modifier.padding(vertical = 2.dp)
                         ) {
                             Text(
                                 text = currentQuestion.topic,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
                 }
             }
 
-            // Question Text
+            // Question Card: Surface, TextPrimary, Divider border
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
@@ -312,20 +366,25 @@ fun TestPlayerScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
 
-                        // Missing file = show path, do not crash
+                        // Render Question Image if non-blank
                         if (currentQuestion.questionImage.isNotBlank()) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFFF5F5F5))
-                                    .padding(12.dp)
-                            ) {
+                            val imgUri = viewModel.resolveMediaUri(currentQuestion.questionImage)
+                            if (imgUri != null) {
+                                AsyncImage(
+                                    model = imgUri,
+                                    contentDescription = "Question Image",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
                                 Text(
-                                    text = "Image Asset: ${currentQuestion.questionImage}",
+                                    text = "Image: ${currentQuestion.questionImage} (file not found)",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Gray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -345,18 +404,25 @@ fun TestPlayerScreen(
                 val isSelected = selectedOption == key
                 val isCorrect = key.equals(currentQuestion.correctAnswer, ignoreCase = true)
 
+                // High contrast state logic
                 val backgroundColor = when {
-                    isSubmitted && isCorrect -> Color(0xFFE8F5E9) // Green for correct answer
-                    isSubmitted && isSelected && !isCorrect -> Color(0xFFFFEBEE) // Red for wrong chosen
-                    isSelected -> Color(0xFFE3F2FD) // Blue selection
+                    isSubmitted && isCorrect -> if (isDarkTheme) EasyTintDark else EasyTint
+                    isSubmitted && isSelected && !isCorrect -> if (isDarkTheme) HardTintDark else HardTint
+                    isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                     else -> MaterialTheme.colorScheme.surface
                 }
 
                 val borderColor = when {
-                    isSubmitted && isCorrect -> Color(0xFF2E7D32)
-                    isSubmitted && isSelected && !isCorrect -> Color(0xFFC62828)
-                    isSelected -> Color(0xFF0D47A1)
-                    else -> MaterialTheme.colorScheme.outlineVariant
+                    isSubmitted && isCorrect -> if (isDarkTheme) EasySolidDark else EasySolid
+                    isSubmitted && isSelected && !isCorrect -> if (isDarkTheme) HardSolidDark else HardSolid
+                    isSelected -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.outline
+                }
+
+                val contentTextColor = when {
+                    isSubmitted && isCorrect -> if (isDarkTheme) OnEasyDark else OnEasy
+                    isSubmitted && isSelected && !isCorrect -> if (isDarkTheme) OnHardDark else OnHard
+                    else -> MaterialTheme.colorScheme.onSurface
                 }
 
                 Card(
@@ -367,90 +433,126 @@ fun TestPlayerScreen(
                             selectedOption = key
                         },
                     colors = CardDefaults.cardColors(containerColor = backgroundColor),
-                    border = BorderStroke(1.5.dp, borderColor)
+                    border = BorderStroke(if (isSelected || isSubmitted && isCorrect) 1.5.dp else 1.dp, borderColor)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(borderColor.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = key,
-                                fontWeight = FontWeight.Bold,
-                                color = borderColor
-                            )
-                        }
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(borderColor.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = key,
+                                    fontWeight = FontWeight.Bold,
+                                    color = contentTextColor
+                                )
+                            }
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
 
-                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = optText,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = contentTextColor,
+                                modifier = Modifier.weight(1f)
                             )
-                            if (optImage.isNotBlank()) {
+
+                            if (isSubmitted) {
+                                if (isCorrect) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Correct",
+                                        tint = if (isDarkTheme) EasySolidDark else EasySolid
+                                    )
+                                } else if (isSelected) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Wrong",
+                                        tint = if (isDarkTheme) HardSolidDark else HardSolid
+                                    )
+                                }
+                            }
+                        }
+
+                        if (optImage.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val optUri = viewModel.resolveMediaUri(optImage)
+                            if (optUri != null) {
+                                AsyncImage(
+                                    model = optUri,
+                                    contentDescription = "Option $key Image",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(120.dp)
+                                        .clip(RoundedCornerShape(6.dp)),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
                                 Text(
-                                    text = "Option Image: $optImage",
+                                    text = "Option Image: $optImage (file not found)",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Gray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
-
-                        if (isSubmitted) {
-                            if (isCorrect) {
-                                Icon(Icons.Default.Check, contentDescription = "Correct", tint = Color(0xFF2E7D32))
-                            } else if (isSelected) {
-                                Icon(Icons.Default.Close, contentDescription = "Wrong", tint = Color(0xFFC62828))
-                            }
-                        }
                     }
                 }
             }
 
-            // Correct vs Chosen summary after submit
+            // Feedback banner: “Incorrect! Correct option is A”
             if (isSubmitted) {
                 item {
                     val wasCorrect = selectedOption?.equals(currentQuestion.correctAnswer, ignoreCase = true) == true
+                    val bannerBg = if (wasCorrect) {
+                        if (isDarkTheme) EasyTintDark else EasyTint
+                    } else {
+                        if (isDarkTheme) HardTintDark else HardTint
+                    }
+                    val bannerHeadingColor = if (wasCorrect) {
+                        if (isDarkTheme) OnEasyDark else OnEasy
+                    } else {
+                        if (isDarkTheme) OnHardDark else OnHard
+                    }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (wasCorrect) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
-                        )
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = bannerBg),
+                        border = BorderStroke(1.dp, if (wasCorrect) EasySolid else HardSolid)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Text(
-                                text = if (wasCorrect) "Correct Answer! (+1)" else "Incorrect! Correct answer is Option ${currentQuestion.correctAnswer}",
+                                text = if (wasCorrect) "Correct Answer!" else "Incorrect! Correct option is ${currentQuestion.correctAnswer}",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (wasCorrect) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                color = bannerHeadingColor
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Chosen: Option $selectedOption • Correct: Option ${currentQuestion.correctAnswer} • Time: ${timerSeconds}s",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.DarkGray
+                                color = bannerHeadingColor.copy(alpha = 0.9f)
                             )
                         }
                     }
                 }
             }
 
-            // TOGGLE PANEL BELOW the same question: notes linked via note_questions
-            if (linkedNotes.isNotEmpty()) {
+            // Revision Resources row: Surface, TextPrimary title, TextSecondary count
+            if (isSubmitted && (linkedNotes.isNotEmpty() || linkedVideos.isNotEmpty())) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(
@@ -464,35 +566,44 @@ fun TestPlayerScreen(
                                     Icon(
                                         imageVector = Icons.Default.Description,
                                         contentDescription = null,
-                                        tint = Color(0xFF0D47A1),
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Linked Notes for this Question (${linkedNotes.size})",
+                                        text = "Revision Resources",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF0D47A1)
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "(${linkedNotes.size} Notes, ${linkedVideos.size} Reels)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 Icon(
                                     imageVector = if (showLinkedNotes) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                     contentDescription = null,
-                                    tint = Color(0xFF0D47A1)
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
                             AnimatedVisibility(visible = showLinkedNotes) {
                                 Column(
                                     modifier = Modifier.padding(top = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
+                                    // Linked Notes list
                                     linkedNotes.forEach { note ->
-                                        Card(
+                                        Surface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
                                                 .clickable { onOpenNoteReader(note) },
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                            color = MaterialTheme.colorScheme.background,
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                         ) {
                                             Row(
                                                 modifier = Modifier
@@ -502,14 +613,71 @@ fun TestPlayerScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Column(modifier = Modifier.weight(1f)) {
-                                                    Text(text = note.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                                    Text(text = "${note.chapter} • ${note.filePath}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                                    Text(
+                                                        text = note.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "Note: ${note.filePath}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
                                                 }
                                                 Button(
                                                     onClick = { onOpenNoteReader(note) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1))
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = MaterialTheme.colorScheme.primary,
+                                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                                    )
                                                 ) {
-                                                    Text("Read", fontSize = 12.sp)
+                                                    Text("Read", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Related Reels list
+                                    linkedVideos.forEach { video ->
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { onOpenReel(video) },
+                                            color = MaterialTheme.colorScheme.background,
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = video.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "Reel: ${video.videoPath}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                Button(
+                                                    onClick = { onOpenReel(video) },
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = MaterialTheme.colorScheme.primary,
+                                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                                    )
+                                                ) {
+                                                    Icon(Icons.Default.SmartDisplay, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Watch", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                         }

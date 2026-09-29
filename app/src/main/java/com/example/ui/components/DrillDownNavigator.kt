@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,9 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Layers
@@ -29,7 +28,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -64,14 +62,15 @@ fun DrillDownSelector(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp
+            tonalElevation = 2.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -91,7 +90,7 @@ fun DrillDownSelector(
                     )
 
                     if (currentFilter.exam != null) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = currentFilter.exam,
                             style = MaterialTheme.typography.labelMedium,
@@ -104,7 +103,7 @@ fun DrillDownSelector(
                     }
 
                     if (currentFilter.subject != null) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = currentFilter.subject,
                             style = MaterialTheme.typography.labelMedium,
@@ -117,7 +116,7 @@ fun DrillDownSelector(
                     }
 
                     if (currentFilter.chapter != null) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = currentFilter.chapter,
                             style = MaterialTheme.typography.labelMedium,
@@ -145,7 +144,8 @@ fun DrillDownSelector(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp)),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -165,19 +165,30 @@ fun DrillDownSelector(
                                         Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
-                                            Text(text = exam, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                            Text(text = "Tap to choose subject", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(
+                                                text = exam,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Tap to choose subject",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
 
                                     OutlinedButton(
                                         onClick = {
-                                            val filter = DrillDownFilter(exam = exam)
+                                            val filter = DrillDownFilter(exam = exam, subject = null, chapter = null, topic = null)
                                             onFilterChanged(filter)
                                             onSliceReady(filter)
-                                        }
+                                        },
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
                                     ) {
-                                        Text("All subjects")
+                                        Text("All subjects", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
                             }
@@ -187,7 +198,7 @@ fun DrillDownSelector(
 
                 // Step 2: Select Subject
                 currentFilter.subject == null -> {
-                    val subjects = getSubjects(currentFilter.exam)
+                    val subjects = getSubjects(currentFilter.exam!!)
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(subjects) { subject ->
                             Card(
@@ -195,7 +206,8 @@ fun DrillDownSelector(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp)),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -215,19 +227,30 @@ fun DrillDownSelector(
                                         Icon(Icons.Default.Layers, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
-                                            Text(text = subject, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                            Text(text = "Tap to choose chapter", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(
+                                                text = subject,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Tap to choose chapter",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
 
                                     OutlinedButton(
                                         onClick = {
-                                            val filter = currentFilter.copy(subject = subject)
+                                            val filter = currentFilter.copy(subject = subject, chapter = null, topic = null)
                                             onFilterChanged(filter)
                                             onSliceReady(filter)
-                                        }
+                                        },
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
                                     ) {
-                                        Text("All chapters")
+                                        Text("All chapters", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
                             }
@@ -237,7 +260,7 @@ fun DrillDownSelector(
 
                 // Step 3: Select Chapter
                 currentFilter.chapter == null -> {
-                    val chapters = getChapters(currentFilter.exam, currentFilter.subject!!)
+                    val chapters = getChapters(currentFilter.exam!!, currentFilter.subject!!)
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(chapters) { chapter ->
                             Card(
@@ -245,17 +268,18 @@ fun DrillDownSelector(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
                                     .clickable {
-                                        val topics = getTopics(currentFilter.exam, currentFilter.subject, chapter)
+                                        val topics = getTopics(currentFilter.exam!!, currentFilter.subject!!, chapter)
                                         if (topics.size > 1) {
                                             onFilterChanged(currentFilter.copy(chapter = chapter))
                                         } else {
-                                            val filter = currentFilter.copy(chapter = chapter)
+                                            val filter = currentFilter.copy(chapter = chapter, topic = null)
                                             onFilterChanged(filter)
                                             onSliceReady(filter)
                                         }
                                     },
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -267,18 +291,28 @@ fun DrillDownSelector(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                         Spacer(modifier = Modifier.width(12.dp))
-                                        Text(text = chapter, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = chapter,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
                                     }
-                                    Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }
                     }
                 }
 
-                // Step 4: Optional Topic Selection (if multiple topics exist)
+                // Step 4: Optional Topic Selection
                 else -> {
-                    val topics = getTopics(currentFilter.exam, currentFilter.subject!!, currentFilter.chapter!!)
+                    val topics = getTopics(currentFilter.exam!!, currentFilter.subject!!, currentFilter.chapter!!)
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         item {
                             Button(
@@ -287,6 +321,10 @@ fun DrillDownSelector(
                                     onFilterChanged(filter)
                                     onSliceReady(filter)
                                 },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("All topics in ${currentFilter.chapter}")
@@ -303,7 +341,8 @@ fun DrillDownSelector(
                                         onSliceReady(filter)
                                     },
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -311,7 +350,12 @@ fun DrillDownSelector(
                                         .padding(16.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = topic, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        text = topic,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                             }
                         }
