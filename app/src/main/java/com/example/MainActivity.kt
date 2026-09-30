@@ -278,9 +278,6 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
                     onToggleTheme = {
                         viewModel.toggleTheme()
                     },
-                    onImportQuestions = if (currentTab == AppTab.TEST) {
-                        { showQuestionAuthoringMenu = true }
-                    } else null,
                     onCheckUpdate = { showUpdateDialog = true }
                 )
             }
@@ -337,7 +334,14 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
                     }
 
                     AppTab.TEST -> {
-                        // Gap 5 & 6: Shared drill-down to pick exam/subject/chapter for Test slice
+                        // Shared drill-down to pick exam/subject/chapter for Test slice
+                        BackHandler(enabled = testFilter.exam != null) {
+                            when {
+                                testFilter.chapter != null -> viewModel.setTestFilter(testFilter.copy(chapter = null, topic = null))
+                                testFilter.subject != null -> viewModel.setTestFilter(testFilter.copy(subject = null, chapter = null, topic = null))
+                                else -> viewModel.setTestFilter(DrillDownFilter())
+                            }
+                        }
                         DrillDownSelector(
                             title = "Test: Choose Exam or Subject",
                             exams = viewModel.listExams(),

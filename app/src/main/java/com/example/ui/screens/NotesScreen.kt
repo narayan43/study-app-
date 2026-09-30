@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.Add
@@ -88,6 +89,24 @@ fun NotesScreen(
 
     var showAddSheet by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
+    var isSliceSelected by remember { mutableStateOf(false) }
+
+    val showNotes = (notesFilter.chapter != null) || isSliceSelected
+
+    BackHandler(enabled = showNotes || notesFilter.exam != null) {
+        if (showNotes) {
+            isSliceSelected = false
+            when {
+                notesFilter.chapter != null -> viewModel.setNotesFilter(notesFilter.copy(chapter = null, topic = null))
+                notesFilter.subject != null -> viewModel.setNotesFilter(notesFilter.copy(subject = null, chapter = null, topic = null))
+                else -> viewModel.setNotesFilter(DrillDownFilter())
+            }
+        } else if (notesFilter.subject != null) {
+            viewModel.setNotesFilter(notesFilter.copy(subject = null, chapter = null, topic = null))
+        } else if (notesFilter.exam != null) {
+            viewModel.setNotesFilter(DrillDownFilter())
+        }
+    }
 
     val csvPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -205,82 +224,92 @@ fun NotesScreen(
                 )
             }
         )
+    } else if (!showNotes) {
+        DrillDownSelector(
+            title = "Notes: Choose Exam or Subject",
+            exams = viewModel.listExams(),
+            currentFilter = notesFilter,
+            getSubjects = { viewModel.listSubjects(it) },
+            getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
+            getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
+            onFilterChanged = {
+                viewModel.setNotesFilter(it)
+                isSliceSelected = false
+            },
+            onSliceReady = {
+                viewModel.setNotesFilter(it)
+                isSliceSelected = true
+            },
+            onAddClicked = { showAddMenu = true }
+        )
     } else {
-        if (notesFilter.exam == null) {
-            DrillDownSelector(
-                title = "Notes: Choose Exam or Subject",
-                exams = viewModel.listExams(),
-                currentFilter = notesFilter,
-                getSubjects = { viewModel.listSubjects(it) },
-                getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
-                getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
-                onFilterChanged = { viewModel.setNotesFilter(it) },
-                onSliceReady = { viewModel.setNotesFilter(it) },
-                onAddClicked = { showAddMenu = true }
-            )
-        } else {
-            val notes = viewModel.notesForSlice(notesFilter)
+        val notes = viewModel.notesForSlice(notesFilter)
 
-            val sliceLabel = when {
-                notesFilter.chapter != null -> "Chapter: ${notesFilter.chapter}"
-                notesFilter.subject != null -> "Subject: ${notesFilter.subject} (All Chapters)"
-                else -> "Exam: ${notesFilter.exam} (All Subjects)"
-            }
+        val sliceLabel = when {
+            notesFilter.chapter != null -> "Chapter: ${notesFilter.chapter}"
+            notesFilter.subject != null -> "Subject: ${notesFilter.subject} (All Chapters)"
+            else -> "Exam: ${notesFilter.exam} (All Subjects)"
+        }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = sliceLabel,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "${notes.size} note(s) found in notes.csv",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = sliceLabel,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "${notes.size} note(s) found in notes.csv",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            CircularAddButton(
-                                onClick = { showAddMenu = true },
-                                contentDescription = "Add or Import Note"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularAddButton(
+                            onClick = { showAddMenu = true },
+                            contentDescription = "Add or Import Note"
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                isSliceSelected = false
+                                when {
+                                    notesFilter.chapter != null -> viewModel.setNotesFilter(notesFilter.copy(chapter = null, topic = null))
+                                    notesFilter.subject != null -> viewModel.setNotesFilter(notesFilter.copy(subject = null, chapter = null, topic = null))
+                                    else -> viewModel.setNotesFilter(DrillDownFilter())
+                                }
+                            },
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface
                             )
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.setNotesFilter(DrillDownFilter())
-                                },
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.onSurface
-                                )
-                            ) {
-                                Text("Change Filter", fontWeight = FontWeight.SemiBold)
-                            }
+                        ) {
+                            Text("Change Filter", fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
+            }
 
                 if (notes.isEmpty()) {
                     Box(
@@ -327,7 +356,6 @@ fun NotesScreen(
             }
         }
     }
-}
 
 @Composable
 fun NoteCard(

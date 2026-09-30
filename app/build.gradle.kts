@@ -14,19 +14,16 @@ android {
   namespace = "com.example"
   compileSdk = 35
 
-  val buildVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull()
-    ?: project.findProperty("versionCode")?.toString()?.toIntOrNull()
-    ?: 2
-  val buildVersionName = System.getenv("VERSION_NAME")
-    ?: project.findProperty("versionName")?.toString()
-    ?: "1.0.1"
-
   defaultConfig {
     applicationId = "com.aistudio.upsiprep.kxmpzq"
     minSdk = 24
     targetSdk = 35
-    versionCode = buildVersionCode
-    versionName = buildVersionName
+    versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull()
+      ?: (project.findProperty("versionCode") as String?)?.toIntOrNull()
+      ?: 1
+    versionName = (project.findProperty("appVersionName") as String?)
+      ?: (project.findProperty("versionName") as String?)
+      ?: "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

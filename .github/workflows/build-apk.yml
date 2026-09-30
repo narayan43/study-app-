@@ -1,4 +1,4 @@
-name: Build APK
+name: Build and Release APK
 
 on:
   push:
@@ -12,17 +12,22 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build & Release APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17 (Temurin)
         uses: actions/setup-java@v5
@@ -57,19 +62,65 @@ jobs:
             cp .env.example .env 2>/dev/null || touch .env
           fi
 
+      - name: Compute Next Version
+        id: next_version
+        run: |
+          chmod +x scripts/next_version.sh
+          ./scripts/next_version.sh
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
         run: |
-          V_CODE=$(( 100 + GITHUB_RUN_NUMBER ))
-          echo "Building debug APK with versionCode=$V_CODE"
-          ./gradlew assembleDebug -PversionCode=$V_CODE --stacktrace --info
+          VERSION="${{ steps.next_version.outputs.version }}"
+          CODE="${{ steps.next_version.outputs.code }}"
+          echo "Building ExamPrep with appVersionName=$VERSION, appVersionCode=$CODE"
+          ./gradlew assembleDebug -PappVersionName=$VERSION -PappVersionCode=$CODE --stacktrace
 
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: ExamPrep-${{ steps.next_version.outputs.version }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Prepare Release Assets, Tag, and Changelog
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        id: release_info
+        run: |
+          VERSION="${{ steps.next_version.outputs.version }}"
+          TAG="v$VERSION"
+
+          # Fail if tag already exists on remote
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists! Aborting release step to prevent overwriting."
+            exit 1
+          fi
+
+          # Prepare named APK artifact
+          cp app/build/outputs/apk/debug/app-debug.apk "ExamPrep-$VERSION.apk"
+
+          # Create and push git tag
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+          # Capture commit message for release changelog
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s%n%n%b")
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$COMMIT_MSG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.next_version.outputs.version }}
+          name: ExamPrep ${{ steps.next_version.outputs.version }}
+          body: ${{ steps.release_info.outputs.changelog }}
+          files: ExamPrep-${{ steps.next_version.outputs.version }}.apk
+          draft: false
+          prerelease: false

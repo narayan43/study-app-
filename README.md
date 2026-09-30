@@ -141,15 +141,11 @@ Tap the **Update** icon (down-arrow device icon) in the top bar near the Refresh
 - Downloads the APK directly to app cache and initiates the system package installer session.
 - Seamlessly updates the application in-place while keeping all user data intact.
 
-## Download the APK
+## How to install
 
-- **From GitHub Releases:** Download `ExamPrepCSV-vX.Y.apk` directly from **GitHub → Releases** when a tag `v*` is published.
-  To publish a new release, tag your commit and push:
-  ```bash
-  git tag v1.0.2
-  git push origin v1.0.2
-  ```
-- **From GitHub Actions:** Navigate to **GitHub → Actions → workflow Build APK → latest run → Artifacts → `app-debug`**.
+- Actions artifact after each main push
+- Releases page: https://github.com/narayan43/study-app-/releases  
+  Latest APK = highest vX.Y.Z
 
 ## Build locally
 

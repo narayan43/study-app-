@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +75,24 @@ fun ReelsScreen(
     val scope = rememberCoroutineScope()
 
     var showAddSheet by remember { mutableStateOf(false) }
+    var isSliceSelected by remember { mutableStateOf(false) }
+
+    val showReels = (reelsFilter.chapter != null) || isSliceSelected
+
+    BackHandler(enabled = showReels || reelsFilter.exam != null) {
+        if (showReels) {
+            isSliceSelected = false
+            when {
+                reelsFilter.chapter != null -> viewModel.setReelsFilter(reelsFilter.copy(chapter = null, topic = null))
+                reelsFilter.subject != null -> viewModel.setReelsFilter(reelsFilter.copy(subject = null, chapter = null, topic = null))
+                else -> viewModel.setReelsFilter(DrillDownFilter())
+            }
+        } else if (reelsFilter.subject != null) {
+            viewModel.setReelsFilter(reelsFilter.copy(subject = null, chapter = null, topic = null))
+        } else if (reelsFilter.exam != null) {
+            viewModel.setReelsFilter(DrillDownFilter())
+        }
+    }
 
     if (showAddSheet) {
         AddVideoSheet(
@@ -83,7 +102,7 @@ fun ReelsScreen(
         )
     }
 
-    if (reelsFilter.exam == null) {
+    if (!showReels) {
         DrillDownSelector(
             title = "Reels: Choose Exam or Subject",
             exams = viewModel.listExams(),
@@ -91,8 +110,14 @@ fun ReelsScreen(
             getSubjects = { viewModel.listSubjects(it) },
             getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
             getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
-            onFilterChanged = { viewModel.setReelsFilter(it) },
-            onSliceReady = { viewModel.setReelsFilter(it) },
+            onFilterChanged = {
+                viewModel.setReelsFilter(it)
+                isSliceSelected = false
+            },
+            onSliceReady = {
+                viewModel.setReelsFilter(it)
+                isSliceSelected = true
+            },
             onAddClicked = { showAddSheet = true }
         )
     } else {
@@ -129,7 +154,12 @@ fun ReelsScreen(
                     )
                     OutlinedButton(
                         onClick = {
-                            viewModel.setReelsFilter(DrillDownFilter())
+                            isSliceSelected = false
+                            when {
+                                reelsFilter.chapter != null -> viewModel.setReelsFilter(reelsFilter.copy(chapter = null, topic = null))
+                                reelsFilter.subject != null -> viewModel.setReelsFilter(reelsFilter.copy(subject = null, chapter = null, topic = null))
+                                else -> viewModel.setReelsFilter(DrillDownFilter())
+                            }
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                     ) {
@@ -198,7 +228,12 @@ fun ReelsScreen(
                             )
                             Button(
                                 onClick = {
-                                    viewModel.setReelsFilter(DrillDownFilter())
+                                    isSliceSelected = false
+                                    when {
+                                        reelsFilter.chapter != null -> viewModel.setReelsFilter(reelsFilter.copy(chapter = null, topic = null))
+                                        reelsFilter.subject != null -> viewModel.setReelsFilter(reelsFilter.copy(subject = null, chapter = null, topic = null))
+                                        else -> viewModel.setReelsFilter(DrillDownFilter())
+                                    }
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary,
