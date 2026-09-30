@@ -345,6 +345,299 @@ class DataService(private val context: Context) {
         appendToFile("logs/video_usage.csv", CsvHelper.formatVideoUsageLine(log), CsvHelper.VIDEO_USAGE_HEADER)
     }
 
+    // --- ID Allocator & Authoring Append APIs (Step 1) ---
+    fun nextQuestionId(): String {
+        var maxId = 0
+        for (q in cachedQuestions) {
+            val num = extractNumericSuffix(q.questionId, "Q")
+            if (num != null && num > maxId) {
+                maxId = num
+            }
+        }
+        return String.format(Locale.US, "Q%03d", maxId + 1)
+    }
+
+    fun nextNoteId(): String {
+        var maxId = 0
+        for (n in cachedNotes) {
+            val num = extractNumericSuffix(n.noteId, "N")
+            if (num != null && num > maxId) {
+                maxId = num
+            }
+        }
+        return String.format(Locale.US, "N%03d", maxId + 1)
+    }
+
+    fun nextVideoId(): String {
+        var maxId = 0
+        for (v in cachedVideos) {
+            val num = extractNumericSuffix(v.videoId, "V")
+            if (num != null && num > maxId) {
+                maxId = num
+            }
+        }
+        return String.format(Locale.US, "V%03d", maxId + 1)
+    }
+
+    private fun extractNumericSuffix(raw: String, prefix: String): Int? {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith(prefix, ignoreCase = true)) {
+            val digits = trimmed.substring(prefix.length).trim()
+            val parsed = digits.toIntOrNull()
+            if (parsed != null) return parsed
+        }
+        val match = Regex("\\d+").find(trimmed)
+        return match?.value?.toIntOrNull()
+    }
+
+    suspend fun appendQuestion(item: QuestionItem) = withContext(Dispatchers.IO) {
+        cachedQuestions = cachedQuestions + item
+        appendToFile("questions/questions.csv", CsvHelper.formatQuestionLine(item), CsvHelper.QUESTIONS_HEADER)
+        reloadData()
+    }
+
+    suspend fun appendNote(
+        item: NoteItem,
+        content: String? = null,
+        sourceFileUri: Uri? = null
+    ) = withContext(Dispatchers.IO) {
+        val filePath = if (item.filePath.isNotBlank()) item.filePath else "notes/files/${item.noteId}.txt"
+        val normalizedNote = item.copy(filePath = filePath)
+        writeOrCopyFile(filePath, content = content ?: "", sourceUri = sourceFileUri)
+        cachedNotes = cachedNotes + normalizedNote
+        appendToFile("notes/notes.csv", CsvHelper.formatNoteLine(normalizedNote), CsvHelper.NOTES_HEADER)
+        reloadData()
+    }
+
+    suspend fun appendVideo(
+        item: VideoItem,
+        sourceVideoUri: Uri? = null
+    ) = withContext(Dispatchers.IO) {
+        if (sourceVideoUri != null && item.videoPath.isNotBlank() &&
+            !item.videoPath.startsWith("http://") && !item.videoPath.startsWith("https://")
+        ) {
+            writeOrCopyFile(item.videoPath, sourceUri = sourceVideoUri)
+        }
+        cachedVideos = cachedVideos + item
+        appendToFile("videos/videos.csv", CsvHelper.formatVideoLine(item), CsvHelper.VIDEOS_HEADER)
+        reloadData()
+    }
+
+    suspend fun appendNoteLink(noteId: String, questionId: String) = withContext(Dispatchers.IO) {
+        val cleanNoteId = noteId.trim()
+        val cleanQuestionId = questionId.trim()
+        if (cleanNoteId.isBlank() || cleanQuestionId.isBlank()) return@withContext
+
+        val exists = cachedNoteQuestions.any {
+            it.noteId.equals(cleanNoteId, ignoreCase = true) &&
+            it.questionId.equals(cleanQuestionId, ignoreCase = true)
+        }
+        if (!exists) {
+            val link = NoteQuestionLink(cleanNoteId, cleanQuestionId)
+            cachedNoteQuestions = cachedNoteQuestions + link
+            appendToFile(
+                "links/note_questions.csv",
+                CsvHelper.formatNoteQuestionLine(cleanNoteId, cleanQuestionId),
+                CsvHelper.NOTE_QUESTIONS_HEADER
+            )
+            reloadData()
+        }
+    }
+
+    suspend fun appendVideoLink(videoId: String, questionId: String) = withContext(Dispatchers.IO) {
+        val cleanVideoId = videoId.trim()
+        val cleanQuestionId = questionId.trim()
+        if (cleanVideoId.isBlank() || cleanQuestionId.isBlank()) return@withContext
+
+        val exists = cachedVideoQuestions.any {
+            it.videoId.equals(cleanVideoId, ignoreCase = true) &&
+            it.questionId.equals(cleanQuestionId, ignoreCase = true)
+        }
+        if (!exists) {
+            val link = VideoQuestionLink(cleanVideoId, cleanQuestionId)
+            cachedVideoQuestions = cachedVideoQuestions + link
+            appendToFile(
+                "links/video_questions.csv",
+                CsvHelper.formatVideoQuestionLine(cleanVideoId, cleanQuestionId),
+                CsvHelper.VIDEO_QUESTIONS_HEADER
+            )
+            reloadData()
+        }
+    }
+
+    fun remapIncomingQuestionIds(rows: List<QuestionItem>): Pair<List<QuestionItem>, Map<String, String>> {
+        val usedIds = cachedQuestions.map { it.questionId.trim().lowercase() }.toMutableSet()
+        var currentMax = 0
+        for (id in usedIds) {
+            val num = extractNumericSuffix(id, "q")
+            if (num != null && num > currentMax) {
+                currentMax = num
+            }
+        }
+
+        val remappedList = mutableListOf<QuestionItem>()
+        val idMap = mutableMapOf<String, String>()
+
+        for (row in rows) {
+            val rawOldId = row.questionId.trim()
+            val isCollision = rawOldId.isBlank() || usedIds.contains(rawOldId.lowercase())
+
+            val finalId = if (isCollision) {
+                do {
+                    currentMax++
+                    val candidate = String.format(Locale.US, "Q%03d", currentMax)
+                } while (usedIds.contains(candidate.lowercase()))
+                val newId = String.format(Locale.US, "Q%03d", currentMax)
+                usedIds.add(newId.lowercase())
+                idMap[rawOldId] = newId
+                newId
+            } else {
+                usedIds.add(rawOldId.lowercase())
+                idMap[rawOldId] = rawOldId
+                val num = extractNumericSuffix(rawOldId, "q")
+                if (num != null && num > currentMax) {
+                    currentMax = num
+                }
+                rawOldId
+            }
+
+            remappedList.add(row.copy(questionId = finalId))
+        }
+
+        return Pair(remappedList, idMap)
+    }
+
+    fun remapIncomingNoteIds(rows: List<NoteItem>): Pair<List<NoteItem>, Map<String, String>> {
+        val usedIds = cachedNotes.map { it.noteId.trim().lowercase() }.toMutableSet()
+        var currentMax = 0
+        for (id in usedIds) {
+            val num = extractNumericSuffix(id, "n")
+            if (num != null && num > currentMax) {
+                currentMax = num
+            }
+        }
+
+        val remappedList = mutableListOf<NoteItem>()
+        val idMap = mutableMapOf<String, String>()
+
+        for (row in rows) {
+            val rawOldId = row.noteId.trim()
+            val isCollision = rawOldId.isBlank() || usedIds.contains(rawOldId.lowercase())
+
+            val finalId = if (isCollision) {
+                do {
+                    currentMax++
+                    val candidate = String.format(Locale.US, "N%03d", currentMax)
+                } while (usedIds.contains(candidate.lowercase()))
+                val newId = String.format(Locale.US, "N%03d", currentMax)
+                usedIds.add(newId.lowercase())
+                idMap[rawOldId] = newId
+                newId
+            } else {
+                usedIds.add(rawOldId.lowercase())
+                idMap[rawOldId] = rawOldId
+                val num = extractNumericSuffix(rawOldId, "n")
+                if (num != null && num > currentMax) {
+                    currentMax = num
+                }
+                rawOldId
+            }
+
+            remappedList.add(row.copy(noteId = finalId))
+        }
+
+        return Pair(remappedList, idMap)
+    }
+
+    suspend fun appendNotesBulk(notes: List<NoteItem>) = withContext(Dispatchers.IO) {
+        val builder = StringBuilder()
+        for (note in notes) {
+            val filePath = if (note.filePath.isNotBlank()) note.filePath else "notes/files/${note.noteId}.txt"
+            val normalizedNote = note.copy(filePath = filePath)
+            writeOrCopyFile(filePath, content = "# ${note.title}\n\nImported note content.")
+            builder.append(CsvHelper.formatNoteLine(normalizedNote))
+        }
+        cachedNotes = cachedNotes + notes
+        appendToFile("notes/notes.csv", builder.toString(), CsvHelper.NOTES_HEADER)
+        reloadData()
+    }
+
+    suspend fun appendQuestionsBulk(questions: List<QuestionItem>) = withContext(Dispatchers.IO) {
+        val builder = StringBuilder()
+        for (q in questions) {
+            builder.append(CsvHelper.formatQuestionLine(q))
+        }
+        cachedQuestions = cachedQuestions + questions
+        appendToFile("questions/questions.csv", builder.toString(), CsvHelper.QUESTIONS_HEADER)
+        reloadData()
+    }
+
+    suspend fun importQuestionsFromCsv(csvText: String): Pair<Int, Int> = withContext(Dispatchers.IO) {
+        val headerLine = csvText.lines().firstOrNull { it.isNotBlank() } ?: ""
+        if (!CsvHelper.validateQuestionsHeader(headerLine)) {
+            throw IllegalArgumentException("Invalid questions.csv header: must include exam, question_id, question_text, correct_answer")
+        }
+
+        val parsed = CsvHelper.parseQuestions(csvText)
+        if (parsed.isEmpty()) {
+            throw IllegalArgumentException("No valid questions found in CSV")
+        }
+
+        val (remapped, idMap) = remapIncomingQuestionIds(parsed)
+        appendQuestionsBulk(remapped)
+        val remappedCount = idMap.count { it.key != it.value }
+        Pair(remapped.size, remappedCount)
+    }
+
+    suspend fun importQuestionsFromZip(zipUri: Uri): Pair<Int, Int> = withContext(Dispatchers.IO) {
+        var csvContent: String? = null
+        val imagesToExtract = mutableListOf<Pair<String, ByteArray>>()
+
+        context.contentResolver.openInputStream(zipUri)?.use { input ->
+            java.util.zip.ZipInputStream(input).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val name = entry.name.replace('\\', '/')
+                    if (!entry.isDirectory) {
+                        val fileName = name.substringAfterLast("/")
+                        if (fileName.equals("questions.csv", ignoreCase = true)) {
+                            csvContent = zis.bufferedReader().readText()
+                        } else if (name.contains("questions/images/", ignoreCase = true) || name.contains("images/", ignoreCase = true)) {
+                            val relImgPath = "questions/images/$fileName"
+                            val bytes = zis.readBytes()
+                            imagesToExtract.add(Pair(relImgPath, bytes))
+                        }
+                    }
+                    entry = zis.nextEntry
+                }
+            }
+        }
+
+        if (csvContent == null) {
+            throw IllegalArgumentException("No questions.csv found inside ZIP archive")
+        }
+
+        val headerLine = csvContent.lines().firstOrNull { it.isNotBlank() } ?: ""
+        if (!CsvHelper.validateQuestionsHeader(headerLine)) {
+            throw IllegalArgumentException("Invalid questions.csv header inside ZIP")
+        }
+
+        val parsed = CsvHelper.parseQuestions(csvContent)
+        if (parsed.isEmpty()) {
+            throw IllegalArgumentException("No valid questions found in ZIP's questions.csv")
+        }
+
+        // Extract any accompanying images
+        for ((relPath, bytes) in imagesToExtract) {
+            writeOrCopyFile(relPath, byteContent = bytes)
+        }
+
+        val (remapped, idMap) = remapIncomingQuestionIds(parsed)
+        appendQuestionsBulk(remapped)
+        val remappedCount = idMap.count { it.key != it.value }
+        Pair(remapped.size, remappedCount)
+    }
+
     // --- Dashboard Stats Computation (Gap 1, Gap 9) ---
     fun dashboardStats(): DashboardStats {
         val totalQuestions = cachedQuestions.size
@@ -509,6 +802,63 @@ class DataService(private val context: Context) {
         return if (f.exists() && f.canRead()) f.readText() else null
     }
 
+    private fun writeOrCopyFile(
+        relPath: String,
+        content: String? = null,
+        sourceUri: Uri? = null,
+        byteContent: ByteArray? = null
+    ) {
+        val cleanRel = relPath.trimStart('/')
+        val mime = when {
+            cleanRel.endsWith(".txt") || cleanRel.endsWith(".md") -> "text/plain"
+            cleanRel.endsWith(".pdf") -> "application/pdf"
+            cleanRel.endsWith(".mp4") -> "video/mp4"
+            cleanRel.endsWith(".png") -> "image/png"
+            cleanRel.endsWith(".jpg") || cleanRel.endsWith(".jpeg") -> "image/jpeg"
+            else -> "application/octet-stream"
+        }
+
+        val uri = externalTreeUri
+        if (uri != null) {
+            val docFile = getOrCreateDocumentFile(uri, cleanRel, headerIfNew = "", mimeType = mime)
+            if (docFile != null) {
+                try {
+                    context.contentResolver.openOutputStream(docFile.uri)?.use { os ->
+                        if (sourceUri != null) {
+                            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                                input.copyTo(os)
+                            }
+                        } else if (byteContent != null) {
+                            os.write(byteContent)
+                        } else if (content != null) {
+                            os.write(content.toByteArray())
+                        }
+                    }
+                    return
+                } catch (_: Exception) {}
+            }
+        }
+
+        // Local fallback
+        val f = File(localDataDir, cleanRel)
+        f.parentFile?.mkdirs()
+        if (sourceUri != null) {
+            try {
+                context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    f.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            } catch (_: Exception) {}
+        } else if (byteContent != null) {
+            f.writeBytes(byteContent)
+        } else if (content != null) {
+            f.writeText(content)
+        } else if (!f.exists()) {
+            f.createNewFile()
+        }
+    }
+
     private fun appendToFile(relPath: String, lineToAppend: String, headerIfNew: String) {
         val uri = externalTreeUri
         if (uri != null) {
@@ -543,7 +893,12 @@ class DataService(private val context: Context) {
         return current
     }
 
-    private fun getOrCreateDocumentFile(treeUri: Uri, relPath: String, headerIfNew: String): DocumentFile? {
+    private fun getOrCreateDocumentFile(
+        treeUri: Uri,
+        relPath: String,
+        headerIfNew: String = "",
+        mimeType: String = "text/comma-separated-values"
+    ): DocumentFile? {
         var current = DocumentFile.fromTreeUri(context, treeUri) ?: return null
         val parts = relPath.split("/").filter { it.isNotBlank() }
         if (parts.isEmpty()) return null
@@ -558,8 +913,8 @@ class DataService(private val context: Context) {
         val fileName = parts.last()
         var targetFile = current.findFile(fileName)
         if (targetFile == null) {
-            targetFile = current.createFile("text/comma-separated-values", fileName)
-            if (targetFile != null) {
+            targetFile = current.createFile(mimeType, fileName)
+            if (targetFile != null && headerIfNew.isNotEmpty()) {
                 context.contentResolver.openOutputStream(targetFile.uri)?.use { stream ->
                     stream.write((headerIfNew + "\n").toByteArray())
                 }

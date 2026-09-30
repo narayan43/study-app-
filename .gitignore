@@ -1,0 +1,17 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/*/build
+*.apk
+*.aab
+
+# Platform and compiler caches
+.kotlin/
+.build-outputs/
+
+# Keep gradle wrapper files tracked
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties

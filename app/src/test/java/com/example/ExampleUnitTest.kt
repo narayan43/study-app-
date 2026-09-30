@@ -99,4 +99,69 @@ class ExampleUnitTest {
         assertEquals(parsedMillis, parsed[0].timestamp)
         assertTrue(parsed[0].rawTimestamp.contains("2026-09-27"))
     }
+
+    @Test
+    fun testFormatQuestionLineAndParse() {
+        val q = QuestionItem(
+            exam = "UPSI",
+            questionId = "Q081",
+            subject = "Law",
+            chapter = "IPC",
+            topic = "Offences",
+            questionText = "What is murder?",
+            optionA = "Section 300",
+            optionB = "Section 302",
+            optionC = "Section 304",
+            optionD = "Section 307",
+            questionImage = "",
+            optionAImage = "",
+            optionBImage = "",
+            optionCImage = "",
+            optionDImage = "",
+            correctAnswer = "A"
+        )
+        val line = CsvHelper.formatQuestionLine(q)
+        val csv = "${CsvHelper.QUESTIONS_HEADER}\n$line"
+        val parsed = CsvHelper.parseQuestions(csv)
+        assertEquals(1, parsed.size)
+        assertEquals("Q081", parsed[0].questionId)
+        assertEquals("Section 300", parsed[0].optionA)
+        assertEquals("A", parsed[0].correctAnswer)
+    }
+
+    @Test
+    fun testFormatNoteAndVideoLines() {
+        val note = NoteItem("N009", "UPSI", "Law", "IPC", "Offences", "IPC Murder", "notes/files/N009.txt", "markdown")
+        val noteLine = CsvHelper.formatNoteLine(note)
+        val noteCsv = "${CsvHelper.NOTES_HEADER}\n$noteLine"
+        val parsedNotes = CsvHelper.parseNotes(noteCsv)
+        assertEquals(1, parsedNotes.size)
+        assertEquals("N009", parsedNotes[0].noteId)
+        assertEquals("notes/files/N009.txt", parsedNotes[0].filePath)
+
+        val video = VideoItem("V007", "UPSI", "Law", "IPC", "Offences", "IPC Lecture", "videos/files/V007.mp4", 300)
+        val videoLine = CsvHelper.formatVideoLine(video)
+        val videoCsv = "${CsvHelper.VIDEOS_HEADER}\n$videoLine"
+        val parsedVideos = CsvHelper.parseVideos(videoCsv)
+        assertEquals(1, parsedVideos.size)
+        assertEquals("V007", parsedVideos[0].videoId)
+        assertEquals(300, parsedVideos[0].durationSec)
+    }
+
+    @Test
+    fun testFormatLinks() {
+        val noteLinkLine = CsvHelper.formatNoteQuestionLine("N009", "Q081")
+        val noteLinkCsv = "${CsvHelper.NOTE_QUESTIONS_HEADER}\n$noteLinkLine"
+        val parsedNoteLinks = CsvHelper.parseNoteQuestions(noteLinkCsv)
+        assertEquals(1, parsedNoteLinks.size)
+        assertEquals("N009", parsedNoteLinks[0].noteId)
+        assertEquals("Q081", parsedNoteLinks[0].questionId)
+
+        val videoLinkLine = CsvHelper.formatVideoQuestionLine("V007", "Q081")
+        val videoLinkCsv = "${CsvHelper.VIDEO_QUESTIONS_HEADER}\n$videoLinkLine"
+        val parsedVideoLinks = CsvHelper.parseVideoQuestions(videoLinkCsv)
+        assertEquals(1, parsedVideoLinks.size)
+        assertEquals("V007", parsedVideoLinks[0].videoId)
+        assertEquals("Q081", parsedVideoLinks[0].questionId)
+    }
 }

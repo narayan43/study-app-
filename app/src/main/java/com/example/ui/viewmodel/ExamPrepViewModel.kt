@@ -169,6 +169,23 @@ class ExamPrepViewModel(
     fun videosForQuestion(questionId: String): List<VideoItem> = dataService.videosForQuestion(questionId)
     fun getMistakesGrouped(): Map<String, Map<String, Map<String, List<String>>>> = dataService.getMistakesGrouped()
     fun resolveMediaUri(relPath: String): Uri? = dataService.resolveMediaUri(relPath)
+
+    // Authoring APIs (Step 1)
+    fun nextQuestionId(): String = dataService.nextQuestionId()
+    fun nextNoteId(): String = dataService.nextNoteId()
+    fun nextVideoId(): String = dataService.nextVideoId()
+
+    suspend fun appendQuestion(item: QuestionItem) = dataService.appendQuestion(item)
+    suspend fun appendNote(item: NoteItem, content: String? = null, sourceFileUri: Uri? = null) = dataService.appendNote(item, content, sourceFileUri)
+    suspend fun appendVideo(item: VideoItem, sourceVideoUri: Uri? = null) = dataService.appendVideo(item, sourceVideoUri)
+    suspend fun appendNoteLink(noteId: String, questionId: String) = dataService.appendNoteLink(noteId, questionId)
+    suspend fun appendVideoLink(videoId: String, questionId: String) = dataService.appendVideoLink(videoId, questionId)
+    fun remapIncomingQuestionIds(rows: List<QuestionItem>) = dataService.remapIncomingQuestionIds(rows)
+    fun remapIncomingNoteIds(rows: List<NoteItem>) = dataService.remapIncomingNoteIds(rows)
+    suspend fun appendNotesBulk(notes: List<NoteItem>) = dataService.appendNotesBulk(notes)
+    suspend fun appendQuestionsBulk(questions: List<QuestionItem>) = dataService.appendQuestionsBulk(questions)
+    suspend fun importQuestionsFromCsv(csvText: String): Pair<Int, Int> = dataService.importQuestionsFromCsv(csvText)
+    suspend fun importQuestionsFromZip(zipUri: Uri): Pair<Int, Int> = dataService.importQuestionsFromZip(zipUri)
 }
 
 class ExamPrepViewModelFactory(

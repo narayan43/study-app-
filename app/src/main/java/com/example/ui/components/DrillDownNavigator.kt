@@ -51,7 +51,8 @@ fun DrillDownSelector(
     getChapters: (String, String) -> List<String>,
     getTopics: (String, String, String) -> List<String>,
     onFilterChanged: (DrillDownFilter) -> Unit,
-    onSliceReady: (DrillDownFilter) -> Unit
+    onSliceReady: (DrillDownFilter) -> Unit,
+    onAddClicked: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -66,12 +67,23 @@ fun DrillDownSelector(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (onAddClicked != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularAddButton(onClick = onAddClicked)
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Active Breadcrumb trail

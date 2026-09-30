@@ -61,6 +61,11 @@ object CsvHelper {
         }
     }
 
+    fun validateQuestionsHeader(headerLine: String): Boolean {
+        val lower = headerLine.lowercase()
+        return lower.contains("exam") && lower.contains("question_id") && lower.contains("question_text") && lower.contains("correct_answer")
+    }
+
     fun parseQuestions(csvContent: String): List<QuestionItem> {
         val lines = csvContent.lines().filter { it.isNotBlank() }
         if (lines.size <= 1) return emptyList()
@@ -266,6 +271,61 @@ object CsvHelper {
         val openIso = if (usage.rawOpenedAt.isNotBlank()) usage.rawOpenedAt else formatIsoTimestamp(usage.openedAt)
         val closeIso = if (usage.rawClosedAt.isNotBlank()) usage.rawClosedAt else formatIsoTimestamp(usage.closedAt)
         return "${escape(usage.eventId)},${escape(usage.videoId)},${escape(usage.exam)},${escape(usage.subject)},${escape(usage.chapter)},$openIso,$closeIso,${usage.timeSpentSec},${usage.startedTest}\n"
+    }
+
+    fun formatQuestionLine(question: QuestionItem): String {
+        return listOf(
+            escape(question.exam),
+            escape(question.questionId),
+            escape(question.subject),
+            escape(question.chapter),
+            escape(question.topic),
+            escape(question.questionText),
+            escape(question.optionA),
+            escape(question.optionB),
+            escape(question.optionC),
+            escape(question.optionD),
+            escape(question.questionImage),
+            escape(question.optionAImage),
+            escape(question.optionBImage),
+            escape(question.optionCImage),
+            escape(question.optionDImage),
+            escape(question.correctAnswer)
+        ).joinToString(",") + "\n"
+    }
+
+    fun formatNoteLine(note: NoteItem): String {
+        return listOf(
+            escape(note.noteId),
+            escape(note.exam),
+            escape(note.subject),
+            escape(note.chapter),
+            escape(note.topic),
+            escape(note.title),
+            escape(note.filePath),
+            escape(note.noteType)
+        ).joinToString(",") + "\n"
+    }
+
+    fun formatVideoLine(video: VideoItem): String {
+        return listOf(
+            escape(video.videoId),
+            escape(video.exam),
+            escape(video.subject),
+            escape(video.chapter),
+            escape(video.topic),
+            escape(video.title),
+            escape(video.videoPath),
+            video.durationSec.toString()
+        ).joinToString(",") + "\n"
+    }
+
+    fun formatNoteQuestionLine(noteId: String, questionId: String): String {
+        return "${escape(noteId)},${escape(questionId)}\n"
+    }
+
+    fun formatVideoQuestionLine(videoId: String, questionId: String): String {
+        return "${escape(videoId)},${escape(questionId)}\n"
     }
 
     fun escape(data: String): String {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LightMode
@@ -45,7 +46,8 @@ fun ExamPrepTopBar(
     isDarkTheme: Boolean,
     onPickFolder: () -> Unit,
     onReloadData: () -> Unit,
-    onToggleTheme: () -> Unit
+    onToggleTheme: () -> Unit,
+    onImportQuestions: (() -> Unit)? = null
 ) {
     val barContainer = if (isDarkTheme) AppSurfaceDark else AppPrimary
     val barContent = if (isDarkTheme) AppTextPrimaryDark else AppOnPrimary
@@ -99,6 +101,15 @@ fun ExamPrepTopBar(
             }
         },
         actions = {
+            if (onImportQuestions != null) {
+                IconButton(onClick = onImportQuestions) {
+                    Icon(
+                        imageVector = Icons.Default.FileUpload,
+                        contentDescription = "Import questions.csv",
+                        tint = barContent
+                    )
+                }
+            }
             // Theme toggle (Sun/Moon icon)
             IconButton(onClick = onToggleTheme) {
                 Icon(

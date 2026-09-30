@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,9 +55,15 @@ import androidx.media3.ui.PlayerView
 import com.example.data.model.DrillDownFilter
 import com.example.data.model.TestSliceSource
 import com.example.data.model.VideoItem
+import com.example.ui.components.AddContentSheetChrome
+import com.example.ui.components.AddVideoSheet
+import com.example.ui.components.CircularAddButton
 import com.example.ui.components.DrillDownSelector
 import com.example.ui.viewmodel.ExamPrepViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.OutlinedTextField
 
 @Composable
 fun ReelsScreen(
@@ -64,6 +71,17 @@ fun ReelsScreen(
     onStartTestSlice: (TestSliceSource) -> Unit
 ) {
     val reelsFilter by viewModel.reelsFilter.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    var showAddSheet by remember { mutableStateOf(false) }
+
+    if (showAddSheet) {
+        AddVideoSheet(
+            lockedFilter = reelsFilter,
+            viewModel = viewModel,
+            onDismiss = { showAddSheet = false }
+        )
+    }
 
     if (reelsFilter.exam == null) {
         DrillDownSelector(
@@ -74,7 +92,8 @@ fun ReelsScreen(
             getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
             getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
             onFilterChanged = { viewModel.setReelsFilter(it) },
-            onSliceReady = { viewModel.setReelsFilter(it) }
+            onSliceReady = { viewModel.setReelsFilter(it) },
+            onAddClicked = { showAddSheet = true }
         )
     } else {
         val rawVideos = remember(reelsFilter) { viewModel.videosForSlice(reelsFilter) }
@@ -100,13 +119,22 @@ fun ReelsScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedButton(
-                    onClick = {
-                        viewModel.setReelsFilter(DrillDownFilter())
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Change Filter", color = Color.White, fontWeight = FontWeight.Bold)
+                    CircularAddButton(
+                        onClick = { showAddSheet = true },
+                        contentDescription = "Add Reel"
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.setReelsFilter(DrillDownFilter())
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Text("Change Filter", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         } else {
@@ -160,17 +188,26 @@ fun ReelsScreen(
                             )
                         }
 
-                        Button(
-                            onClick = {
-                                viewModel.setReelsFilter(DrillDownFilter())
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier.height(34.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Switch", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            CircularAddButton(
+                                onClick = { showAddSheet = true },
+                                contentDescription = "Add Reel"
+                            )
+                            Button(
+                                onClick = {
+                                    viewModel.setReelsFilter(DrillDownFilter())
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Text("Switch", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

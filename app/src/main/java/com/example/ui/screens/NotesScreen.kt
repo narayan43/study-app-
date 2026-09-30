@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,21 +51,137 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.csv.CsvHelper
 import com.example.data.model.DrillDownFilter
 import com.example.data.model.NoteItem
 import com.example.data.model.TestSliceSource
+import com.example.ui.components.AddContentSheetChrome
+import com.example.ui.components.AddNoteSheet
+import com.example.ui.components.CircularAddButton
 import com.example.ui.components.DrillDownSelector
 import com.example.ui.viewmodel.ExamPrepViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 
 @Composable
 fun NotesScreen(
     viewModel: ExamPrepViewModel,
     onStartTestSlice: (TestSliceSource) -> Unit
 ) {
+    val context = LocalContext.current
     val notesFilter by viewModel.notesFilter.collectAsState()
     val activeNote by viewModel.activeNote.collectAsState()
     val activeNoteContent by viewModel.activeNoteContent.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    var showAddSheet by remember { mutableStateOf(false) }
+    var showAddMenu by remember { mutableStateOf(false) }
+
+    val csvPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val csvContent = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                    val notes = CsvHelper.parseNotes(csvContent)
+                    if (notes.isEmpty()) {
+                        Toast.makeText(context, "No valid notes found or invalid notes.csv header", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val (remapped, idMap) = viewModel.remapIncomingNoteIds(notes)
+                        viewModel.appendNotesBulk(remapped)
+                        val remappedCount = idMap.count { it.key != it.value }
+                        val msg = if (remappedCount > 0) {
+                            "Imported ${remapped.size} notes ($remappedCount remapped to prevent collisions)"
+                        } else {
+                            "Imported ${remapped.size} notes successfully"
+                        }
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to import notes.csv: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    if (showAddMenu) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showAddMenu = false },
+            title = { Text("Notes Authoring", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                showAddMenu = false
+                                showAddSheet = true
+                            },
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    ) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Create New Note", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Add note into current filter context", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                showAddMenu = false
+                                csvPickerLauncher.launch(arrayOf("text/*", "text/comma-separated-values", "application/csv"))
+                            },
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    ) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FileUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Import notes.csv", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Merge external CSV (auto-remaps collisions)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                OutlinedButton(onClick = { showAddMenu = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showAddSheet) {
+        AddNoteSheet(
+            lockedFilter = notesFilter,
+            viewModel = viewModel,
+            onDismiss = { showAddSheet = false }
+        )
+    }
 
     if (activeNote != null) {
         NoteReaderView(
@@ -98,7 +215,8 @@ fun NotesScreen(
                 getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
                 getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
                 onFilterChanged = { viewModel.setNotesFilter(it) },
-                onSliceReady = { viewModel.setNotesFilter(it) }
+                onSliceReady = { viewModel.setNotesFilter(it) },
+                onAddClicked = { showAddMenu = true }
             )
         } else {
             val notes = viewModel.notesForSlice(notesFilter)
@@ -141,16 +259,25 @@ fun NotesScreen(
                             )
                         }
 
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.setNotesFilter(DrillDownFilter())
-                            },
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.onSurface
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Change Filter", fontWeight = FontWeight.SemiBold)
+                            CircularAddButton(
+                                onClick = { showAddMenu = true },
+                                contentDescription = "Add or Import Note"
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.setNotesFilter(DrillDownFilter())
+                                },
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            ) {
+                                Text("Change Filter", fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
