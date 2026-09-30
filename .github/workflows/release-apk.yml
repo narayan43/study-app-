@@ -27,14 +27,26 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
+      - name: Configure ANDROID_HOME and accept licenses
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          yes | sdkmanager --licenses || true
+
+      - name: Install Android Platform and Build Tools
+        run: |
+          echo "y" | sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+
+      - name: Ensure .env exists for Secrets plugin
+        run: |
+          if [ ! -f .env ]; then
+            cp .env.example .env 2>/dev/null || touch .env
+          fi
 
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --info
 
       - name: Prepare Release APK Asset
         run: |
