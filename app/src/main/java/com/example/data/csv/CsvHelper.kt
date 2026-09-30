@@ -25,6 +25,9 @@ object CsvHelper {
     const val ATTEMPTS_HEADER = "attempt_id,question_id,exam,subject,chapter,chosen_answer,is_correct,time_spent_sec,timestamp"
     const val NOTES_USAGE_HEADER = "event_id,note_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec"
     const val VIDEO_USAGE_HEADER = "event_id,video_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec,started_test"
+    const val TREE_HEADER = "exam,subject,chapter,topic"
+
+    data class TreeRow(val exam: String, val subject: String, val chapter: String, val topic: String)
 
     // Parse ISO-8601 first, fallback to epoch millis
     fun parseTimestamp(str: String): Long {
@@ -93,6 +96,29 @@ object CsvHelper {
                         correctAnswer = cols[15].trim().uppercase()
                     )
                 )
+            } else if (cols.size >= 11) {
+                // Schema migration: older CSV without 5 image columns
+                val answer = cols.last().trim().uppercase()
+                result.add(
+                    QuestionItem(
+                        exam = cols[0],
+                        questionId = cols[1],
+                        subject = cols[2],
+                        chapter = cols[3],
+                        topic = cols[4],
+                        questionText = cols[5],
+                        optionA = cols[6],
+                        optionB = cols[7],
+                        optionC = cols[8],
+                        optionD = cols[9],
+                        questionImage = "",
+                        optionAImage = "",
+                        optionBImage = "",
+                        optionCImage = "",
+                        optionDImage = "",
+                        correctAnswer = answer
+                    )
+                )
             }
         }
         return result
@@ -104,7 +130,15 @@ object CsvHelper {
         val result = mutableListOf<NoteItem>()
         for (i in 1 until lines.size) {
             val cols = parseCsvLine(lines[i])
-            if (cols.size >= 8) {
+            if (cols.size >= 7) {
+                val filePath = cols[6]
+                val defaultType = when {
+                    filePath.endsWith(".html", ignoreCase = true) || filePath.endsWith(".htm", ignoreCase = true) -> "html"
+                    filePath.endsWith(".pdf", ignoreCase = true) -> "pdf"
+                    filePath.endsWith(".txt", ignoreCase = true) -> "txt"
+                    else -> "markdown"
+                }
+                val noteType = if (cols.size >= 8) cols[7].ifBlank { defaultType } else defaultType
                 result.add(
                     NoteItem(
                         noteId = cols[0],
@@ -113,8 +147,8 @@ object CsvHelper {
                         chapter = cols[3],
                         topic = cols[4],
                         title = cols[5],
-                        filePath = cols[6],
-                        noteType = cols[7]
+                        filePath = filePath,
+                        noteType = noteType
                     )
                 )
             }
@@ -128,7 +162,8 @@ object CsvHelper {
         val result = mutableListOf<VideoItem>()
         for (i in 1 until lines.size) {
             val cols = parseCsvLine(lines[i])
-            if (cols.size >= 8) {
+            if (cols.size >= 7) {
+                val duration = if (cols.size >= 8) cols[7].toIntOrNull() ?: 0 else 0
                 result.add(
                     VideoItem(
                         videoId = cols[0],
@@ -138,7 +173,7 @@ object CsvHelper {
                         topic = cols[4],
                         title = cols[5],
                         videoPath = cols[6],
-                        durationSec = cols[7].toIntOrNull() ?: 0
+                        durationSec = duration
                     )
                 )
             }
@@ -335,6 +370,23 @@ object CsvHelper {
             return "\"$str\""
         }
         return str
+    }
+
+    fun parseTree(csvContent: String): List<TreeRow> {
+        val lines = csvContent.lines().filter { it.isNotBlank() }
+        if (lines.size <= 1) return emptyList()
+        val result = mutableListOf<TreeRow>()
+        for (i in 1 until lines.size) {
+            val cols = parseCsvLine(lines[i])
+            if (cols.size >= 4) {
+                result.add(TreeRow(cols[0], cols[1], cols[2], cols[3]))
+            }
+        }
+        return result
+    }
+
+    fun formatTreeLine(row: TreeRow): String {
+        return "${escape(row.exam)},${escape(row.subject)},${escape(row.chapter)},${escape(row.topic)}\n"
     }
 
     fun parseCsvLine(line: String): List<String> {

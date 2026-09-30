@@ -1,0 +1,10 @@
+# Template for release signing configuration
+# Copy this file to 'key.properties' (ignored by git) and set your actual values.
+#
+# Generate a keystore with:
+#   keytool -genkey -v -keystore release.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000
+#
+storeFile=release.keystore
+storePassword=your_store_password_here
+keyAlias=upload
+keyPassword=your_key_password_here

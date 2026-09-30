@@ -50,22 +50,69 @@ jobs:
             cp .env.example .env 2>/dev/null || touch .env
           fi
 
+      - name: Compute Release Versions
+        id: version
+        run: |
+          TAG="${{ github.ref_name }}"
+          CLEAN_VERSION="${TAG#v}"
+          V_CODE=$(( 100 + GITHUB_RUN_NUMBER ))
+          echo "version_name=$CLEAN_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_code=$V_CODE" >> "$GITHUB_OUTPUT"
+          echo "ACTUAL_VERSION_CODE=$V_CODE" >> "$GITHUB_ENV"
+          echo "ACTUAL_VERSION_NAME=$CLEAN_VERSION" >> "$GITHUB_ENV"
+
+      - name: Set up Release Signing Key
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Using release keystore decoded from secrets.KEYSTORE_BASE64"
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$HOME/release.keystore"
+            echo "KEYSTORE_PATH=$HOME/release.keystore" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD || secrets.STORE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS || 'upload' }}" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD || secrets.STORE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "HAS_RELEASE_KEY=true" >> "$GITHUB_ENV"
+          elif [ -f release.keystore ]; then
+            echo "Using release.keystore found in workspace"
+            echo "KEYSTORE_PATH=$(pwd)/release.keystore" >> "$GITHUB_ENV"
+            echo "HAS_RELEASE_KEY=true" >> "$GITHUB_ENV"
+          else
+            echo "⚠️ No release keystore secret found. Set KEYSTORE_BASE64 in GitHub Secrets for stable signed release updates."
+            echo "HAS_RELEASE_KEY=false" >> "$GITHUB_ENV"
+          fi
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Build APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace --info
-
-      - name: Prepare Release APK Asset
+      - name: Build Release APK with Gradle
         run: |
-          TAG_NAME="${{ github.ref_name }}"
-          cp app/build/outputs/apk/debug/app-debug.apk "ExamPrep-${TAG_NAME}.apk"
+          echo "Building ExamPrep CSV with versionCode=$ACTUAL_VERSION_CODE, versionName=$ACTUAL_VERSION_NAME"
+          if [ "$HAS_RELEASE_KEY" = "true" ]; then
+            ./gradlew assembleRelease -PversionCode=$ACTUAL_VERSION_CODE -PversionName=$ACTUAL_VERSION_NAME --stacktrace
+            APK_SRC="app/build/outputs/apk/release/app-release.apk"
+          else
+            ./gradlew assembleDebug -PversionCode=$ACTUAL_VERSION_CODE -PversionName=$ACTUAL_VERSION_NAME --stacktrace
+            APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
+          fi
+
+          ASSET_NAME="ExamPrepCSV-v${ACTUAL_VERSION_NAME}.apk"
+          cp "$APK_SRC" "$ASSET_NAME"
+          echo "RELEASE_APK=$ASSET_NAME" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release and Attach APK
         uses: softprops/action-gh-release@v2
         with:
-          name: ExamPrep ${{ github.ref_name }}
-          files: ExamPrep-${{ github.ref_name }}.apk
-          generate_release_notes: true
+          name: ExamPrep CSV ${{ github.ref_name }} (Build ${{ env.ACTUAL_VERSION_CODE }})
+          files: ${{ env.RELEASE_APK }}
+          body: |
+            ## ExamPrep CSV ${{ github.ref_name }}
+
+            - **Version Name:** `${{ env.ACTUAL_VERSION_NAME }}`
+            - **Version Code:** `${{ env.ACTUAL_VERSION_CODE }}`
+            - **Application ID:** `com.aistudio.upsiprep.kxmpzq`
+
+            ### 🔄 In-Place Update Instructions
+            - **Do NOT uninstall the previous version!**
+            - Download `${{ env.RELEASE_APK }}` and install it directly over your existing app.
+            - All your local CSV files, notes, HTML documents, attempts history, and reels are completely preserved.
           draft: false
           prerelease: false

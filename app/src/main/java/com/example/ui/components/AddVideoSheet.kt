@@ -97,11 +97,27 @@ fun AddVideoSheet(
         }
     }
 
-    val effectiveExam = lockedFilter.exam ?: inputExam.trim()
-    val effectiveSubject = lockedFilter.subject ?: inputSubject.trim()
-    val effectiveChapter = lockedFilter.chapter ?: inputChapter.trim()
-    val effectiveTopic = inputTopic.trim().ifBlank { effectiveChapter }
+    val rawExam = lockedFilter.exam ?: inputExam.trim()
+    val effectiveExam = viewModel.findCanonicalMatch(rawExam, viewModel.listExams())
+
+    val rawSubject = lockedFilter.subject ?: inputSubject.trim()
+    val effectiveSubject = viewModel.findCanonicalMatch(rawSubject, viewModel.listSubjects(effectiveExam))
+
+    val rawChapter = lockedFilter.chapter ?: inputChapter.trim()
+    val effectiveChapter = viewModel.findCanonicalMatch(rawChapter, viewModel.listChapters(effectiveExam, effectiveSubject))
+
+    val rawTopic = inputTopic.trim().ifBlank { effectiveChapter }
+    val effectiveTopic = viewModel.findCanonicalMatch(rawTopic, viewModel.listTopics(effectiveExam, effectiveSubject, effectiveChapter))
     val effectiveDuration = durationSecStr.trim().toIntOrNull()?.coerceAtLeast(1) ?: 60
+
+    val existingTitles = remember(effectiveExam, effectiveSubject, effectiveChapter, effectiveTopic) {
+        viewModel.listVideoTitles(
+            effectiveExam.ifBlank { null },
+            effectiveSubject.ifBlank { null },
+            effectiveChapter.ifBlank { null },
+            effectiveTopic.ifBlank { null }
+        )
+    }
 
     val hasValidSource = if (videoSourceType == "phone") {
         pickedVideoUri != null
@@ -151,53 +167,54 @@ fun AddVideoSheet(
             }
         }
     ) {
-        // Tree Lock: Unlocked hierarchy fields
-        if (lockedFilter.exam == null) {
-            OutlinedTextField(
-                value = inputExam,
-                onValueChange = { inputExam = it },
-                label = { Text("Exam Name *") },
-                placeholder = { Text("e.g. UPSI, SSC, UP_POLICE") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (lockedFilter.subject == null) {
-            OutlinedTextField(
-                value = inputSubject,
-                onValueChange = { inputSubject = it },
-                label = { Text("Subject Name *") },
-                placeholder = { Text("e.g. Law, General Hindi, GK") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (lockedFilter.chapter == null) {
-            OutlinedTextField(
-                value = inputChapter,
-                onValueChange = { inputChapter = it },
-                label = { Text("Chapter Name *") },
-                placeholder = { Text("e.g. IPC Offences, Constitutional Law") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        OutlinedTextField(
-            value = inputTopic,
-            onValueChange = { inputTopic = it },
-            label = { Text("Topic (Optional)") },
-            placeholder = { Text("Defaults to chapter name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+        // Master CSV Hierarchy Pickers (Cascading, Searchable Dropdown with Explicit Add New)
+        HierarchyPicker(
+            lockedFilter = lockedFilter,
+            availableExams = viewModel.listExams(),
+            getSubjects = { viewModel.listSubjects(it) },
+            getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
+            getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
+            selectedExam = inputExam,
+            onExamChange = { inputExam = it },
+            selectedSubject = inputSubject,
+            onSubjectChange = { inputSubject = it },
+            selectedChapter = inputChapter,
+            onChapterChange = { inputChapter = it },
+            selectedTopic = inputTopic,
+            onTopicChange = { inputTopic = it },
+            showTopic = true
         )
 
         Spacer(modifier = Modifier.height(14.dp))
+
+        // Existing Video Titles quick-picker (when available in master CSV)
+        if (existingTitles.isNotEmpty()) {
+            Text(
+                text = "Existing Titles for this Topic",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(existingTitles.size) { idx ->
+                    val t = existingTitles[idx]
+                    FilterChip(
+                        selected = title.equals(t, ignoreCase = true),
+                        onClick = { title = t },
+                        label = { Text(t, fontSize = 11.sp, maxLines = 1) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         // Video Body: Title
         OutlinedTextField(

@@ -120,6 +120,8 @@ object DummyDataGenerator {
 
             // Note N001 for Polity -> Preamble
             sb.append("N001,UPSI,Polity,Preamble,Philosophy,\"Preamble & Constitutional Philosophy\",notes/files/N001.txt,markdown\n")
+            // Note N009 for Polity -> Preamble (HTML format)
+            sb.append("N009,UPSI,Polity,Preamble,Salient Features,\"Indian Constitution Salient Features\",notes/files/N009.html,html\n")
 
             // Write note content file for N001
             val n001File = File(rootDir, "notes/files/N001.txt")
@@ -138,6 +140,37 @@ object DummyDataGenerator {
                    - Drafted and moved by Pandit Jawaharlal Nehru on December 13, 1946, adopted on January 22, 1947.
                 4. **Adoption**:
                    - Adopted by the Constituent Assembly on 26 November 1949 (National Law Day / Constitution Day).
+                """.trimIndent()
+            )
+
+            // Write note content file for N009 (HTML)
+            val n009File = File(rootDir, "notes/files/N009.html")
+            n009File.parentFile?.mkdirs()
+            n009File.writeText(
+                """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <title>Indian Constitution Salient Features</title>
+                  <style>
+                    body { font-family: sans-serif; line-height: 1.6; color: #222; }
+                    h2 { color: #1E3A8A; }
+                    ul { padding-left: 20px; }
+                    li { margin-bottom: 8px; }
+                  </style>
+                </head>
+                <body>
+                  <h2>Constitution of India: Salient Features</h2>
+                  <p>Overview of foundational pillars for UPSI Exam:</p>
+                  <ul>
+                    <li><strong>Longest Written Constitution:</strong> Originally had 395 articles in 22 parts and 8 schedules.</li>
+                    <li><strong>Blend of Rigidity and Flexibility:</strong> Some provisions require simple majority, while others require special majority under Article 368.</li>
+                    <li><strong>Federal System with Unitary Bias:</strong> Described as 'Quasi-Federal' by K.C. Wheare.</li>
+                    <li><strong>Fundamental Rights:</strong> Part III (Articles 12 to 35) guaranteed to all citizens.</li>
+                  </ul>
+                </body>
+                </html>
                 """.trimIndent()
             )
 
@@ -226,17 +259,26 @@ object DummyDataGenerator {
             videoQuestionsFile.writeText(sb.toString())
         }
 
-        // 6. logs/attempts.csv (with sample ISO-8601 timestamps for 2026-09-27, 28, 29 as required by Gap 1!)
+        // 6. logs/attempts.csv (only create if missing or empty — never overwrite user attempts)
         val attemptsFile = File(logsDir, "attempts.csv")
-        if (!attemptsFile.exists() || attemptsFile.length() == 0L) {
+        val attemptsNeedRefresh = !attemptsFile.exists() || attemptsFile.length() == 0L
+        if (attemptsNeedRefresh) {
             val sb = StringBuilder()
             sb.append(CsvHelper.ATTEMPTS_HEADER).append("\n")
+            // Polity: Preamble (1 wrong question: Q002)
             sb.append("att_001,Q001,UPSI,Polity,Preamble,A,1,14,2026-09-27T10:15:00+05:30\n")
             sb.append("att_002,Q002,UPSI,Polity,Preamble,B,0,25,2026-09-27T10:16:30+05:30\n")
             sb.append("att_003,Q003,UPSI,Polity,Preamble,A,1,18,2026-09-28T14:20:00+05:30\n")
             sb.append("att_004,Q004,UPSI,Polity,Preamble,A,1,22,2026-09-28T14:22:10+05:30\n")
             sb.append("att_005,Q005,UPSI,Polity,Preamble,A,1,12,2026-09-29T09:30:00+05:30\n")
+            // Mool Vidhi: IPC Offences Against Body (2 wrong questions: Q006, Q007)
             sb.append("att_006,Q006,UPSI,Mool Vidhi,IPC Offences Against Body,C,0,30,2026-09-29T09:35:00+05:30\n")
+            sb.append("att_007,Q007,UPSI,Mool Vidhi,IPC Offences Against Body,B,0,28,2026-09-29T09:36:15+05:30\n")
+            // Mool Vidhi: CrPC Police Powers & Arrest (4 wrong questions: Q011, Q012, Q013, Q014)
+            sb.append("att_008,Q011,UPSI,Mool Vidhi,CrPC Police Powers & Arrest,A,0,35,2026-09-29T09:40:00+05:30\n")
+            sb.append("att_009,Q012,UPSI,Mool Vidhi,CrPC Police Powers & Arrest,C,0,40,2026-09-29T09:41:20+05:30\n")
+            sb.append("att_010,Q013,UPSI,Mool Vidhi,CrPC Police Powers & Arrest,D,0,29,2026-09-29T09:42:10+05:30\n")
+            sb.append("att_011,Q014,UPSI,Mool Vidhi,CrPC Police Powers & Arrest,B,0,33,2026-09-29T09:43:00+05:30\n")
             attemptsFile.writeText(sb.toString())
         }
 
@@ -256,6 +298,41 @@ object DummyDataGenerator {
             sb.append(CsvHelper.VIDEO_USAGE_HEADER).append("\n")
             sb.append("vu_001,V001,UPSI,Polity,Preamble,2026-09-27T10:20:00+05:30,2026-09-27T10:40:00+05:30,1200,1\n")
             videoUsageFile.writeText(sb.toString())
+        }
+
+        // 9. master tree CSV
+        val treeDir = File(rootDir, "tree").apply { mkdirs() }
+        val treeFile = File(treeDir, "tree.csv")
+        if (!treeFile.exists() || treeFile.length() == 0L) {
+            val sb = StringBuilder()
+            sb.append("exam,subject,chapter,topic\n")
+            // UPSI
+            sb.append("UPSI,Polity,Preamble,Philosophy\n")
+            sb.append("UPSI,Polity,Preamble,Text\n")
+            sb.append("UPSI,Polity,Preamble,Status\n")
+            sb.append("UPSI,Polity,Preamble,Values\n")
+            sb.append("UPSI,Polity,Preamble,Adoption\n")
+            sb.append("UPSI,Polity,Preamble,Salient Features\n")
+            sb.append("UPSI,Polity,Fundamental Rights & Writs,Articles 14-32\n")
+            sb.append("UPSI,Mool Vidhi,IPC Offences Against Body,IPC 299-304B\n")
+            sb.append("UPSI,Mool Vidhi,CrPC Police Powers & Arrest,Section 41\n")
+            sb.append("UPSI,Mool Vidhi,Special Acts & Cyber Law,IT Act 2000\n")
+            sb.append("UPSI,General Hindi,Vyakaran Sandhi & Samasa,Swara Sandhi\n")
+            sb.append("UPSI,General Hindi,Alankar & Rasa,Yamak & Veer Rasa\n")
+            sb.append("UPSI,Numerical Ability,Percentage & Profit Loss,Successive Discount\n")
+            sb.append("UPSI,Numerical Ability,Compound Interest & Time Work,CI/SI Formulas\n")
+            sb.append("UPSI,Reasoning,Blood Relations & Direction,Coded Relations\n")
+            // NDA
+            sb.append("NDA,Mathematics,Trigonometry & Heights,Identities\n")
+            sb.append("NDA,Mathematics,Matrices & Determinants,Cramer Rule\n")
+            sb.append("NDA,Mathematics,Calculus & Derivatives,Maxima Minima\n")
+            sb.append("NDA,GAT,English Grammar & Synonyms,Vocabulary\n")
+            // UPSSSC_PET
+            sb.append("UPSSSC_PET,General Studies,Indian National Movement,1857 to 1947\n")
+            sb.append("UPSSSC_PET,General Studies,Indian Geography & Rivers,River Systems\n")
+            sb.append("UPSSSC_PET,Elementary Arithmetic,Square Roots & Average,Formulas\n")
+            sb.append("UPSSSC_PET,General Hindi,Sandhi & Vilom Shabd,Basics\n")
+            treeFile.writeText(sb.toString())
         }
     }
 }

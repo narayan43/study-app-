@@ -44,6 +44,7 @@ class DataService(private val context: Context) {
     private var cachedAttempts: List<AttemptLog> = emptyList()
     private var cachedNoteUsage: List<NoteUsageLog> = emptyList()
     private var cachedVideoUsage: List<VideoUsageLog> = emptyList()
+    private var cachedTree: List<CsvHelper.TreeRow> = emptyList()
 
     private val localDataDir = File(context.filesDir, "Data")
 
@@ -52,8 +53,8 @@ class DataService(private val context: Context) {
         if (uriStr != null) {
             externalTreeUri = Uri.parse(uriStr)
         }
-        // First-run internal fallback
-        if (externalTreeUri == null && !localDataDir.exists()) {
+        // First-run internal fallback & demo data verification
+        if (externalTreeUri == null) {
             localDataDir.mkdirs()
             DummyDataGenerator.generateDummyDataTree(localDataDir)
         }
@@ -180,7 +181,34 @@ class DataService(private val context: Context) {
             (chapter == null || it.chapter.equals(chapter, ignoreCase = true))
         }.map { it.topic }
 
-        return qTopics.distinct().filter { it.isNotBlank() }
+        val nTopics = cachedNotes.filter {
+            (exam == null || it.exam.equals(exam, ignoreCase = true)) &&
+            (subject == null || it.subject.equals(subject, ignoreCase = true)) &&
+            (chapter == null || it.chapter.equals(chapter, ignoreCase = true))
+        }.map { it.topic }
+
+        val vTopics = cachedVideos.filter {
+            (exam == null || it.exam.equals(exam, ignoreCase = true)) &&
+            (subject == null || it.subject.equals(subject, ignoreCase = true)) &&
+            (chapter == null || it.chapter.equals(chapter, ignoreCase = true))
+        }.map { it.topic }
+
+        return (qTopics + nTopics + vTopics).distinct().filter { it.isNotBlank() }
+    }
+
+    fun listVideoTitles(exam: String?, subject: String?, chapter: String?, topic: String?): List<String> {
+        return cachedVideos.filter { v ->
+            (exam == null || v.exam.equals(exam, ignoreCase = true)) &&
+            (subject == null || v.subject.equals(subject, ignoreCase = true)) &&
+            (chapter == null || v.chapter.equals(chapter, ignoreCase = true)) &&
+            (topic == null || v.topic.equals(topic, ignoreCase = true))
+        }.map { it.title }.distinct().filter { it.isNotBlank() }
+    }
+
+    fun findCanonicalMatch(input: String, candidates: List<String>): String {
+        val trimmed = input.trim()
+        val match = candidates.firstOrNull { it.trim().equals(trimmed, ignoreCase = true) }
+        return match ?: trimmed
     }
 
     // Gap 5: Multi-width slices (Exam / Subject / Chapter / Topic)
@@ -811,6 +839,7 @@ class DataService(private val context: Context) {
         val cleanRel = relPath.trimStart('/')
         val mime = when {
             cleanRel.endsWith(".txt") || cleanRel.endsWith(".md") -> "text/plain"
+            cleanRel.endsWith(".html") || cleanRel.endsWith(".htm") -> "text/html"
             cleanRel.endsWith(".pdf") -> "application/pdf"
             cleanRel.endsWith(".mp4") -> "video/mp4"
             cleanRel.endsWith(".png") -> "image/png"

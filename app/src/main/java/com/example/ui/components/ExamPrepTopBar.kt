@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,21 +48,26 @@ fun ExamPrepTopBar(
     onPickFolder: () -> Unit,
     onReloadData: () -> Unit,
     onToggleTheme: () -> Unit,
-    onImportQuestions: (() -> Unit)? = null
+    onImportQuestions: (() -> Unit)? = null,
+    onCheckUpdate: (() -> Unit)? = null
 ) {
     val barContainer = if (isDarkTheme) AppSurfaceDark else AppPrimary
     val barContent = if (isDarkTheme) AppTextPrimaryDark else AppOnPrimary
 
     TopAppBar(
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = "ExamPrep CSV",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = barContent
+                    color = barContent,
+                    maxLines = 1,
+                    softWrap = false
                 )
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 val chipBg = if (isFolderLinked) {
                     if (isDarkTheme) EasySolidDark.copy(alpha = 0.25f) else EasySolid
@@ -80,21 +86,25 @@ fun ExamPrepTopBar(
                         .clip(RoundedCornerShape(12.dp))
                         .background(chipBg)
                         .clickable { onPickFolder() }
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
                             imageVector = if (isFolderLinked) Icons.Default.FolderOpen else Icons.Default.Folder,
                             contentDescription = null,
                             tint = chipTextColor,
                             modifier = Modifier.size(12.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = if (isFolderLinked) "SAF Linked" else "Demo Data",
                             color = chipTextColor,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -102,24 +112,41 @@ fun ExamPrepTopBar(
         },
         actions = {
             if (onImportQuestions != null) {
-                IconButton(onClick = onImportQuestions) {
+                IconButton(onClick = onImportQuestions, modifier = Modifier.size(38.dp)) {
                     Icon(
                         imageVector = Icons.Default.FileUpload,
                         contentDescription = "Import questions.csv",
-                        tint = barContent
+                        tint = barContent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            if (onCheckUpdate != null) {
+                IconButton(onClick = onCheckUpdate, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.SystemUpdate,
+                        contentDescription = "Check for Updates",
+                        tint = barContent,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
             // Theme toggle (Sun/Moon icon)
-            IconButton(onClick = onToggleTheme) {
+            IconButton(onClick = onToggleTheme, modifier = Modifier.size(38.dp)) {
                 Icon(
                     imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
                     contentDescription = if (isDarkTheme) "Switch to Light Mode" else "Switch to Dark Mode",
-                    tint = barContent
+                    tint = barContent,
+                    modifier = Modifier.size(20.dp)
                 )
             }
-            IconButton(onClick = onReloadData) {
-                Icon(Icons.Default.Refresh, contentDescription = "Reload Data", tint = barContent)
+            IconButton(onClick = onReloadData, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Reload Data",
+                    tint = barContent,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(

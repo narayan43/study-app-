@@ -81,6 +81,8 @@ fun AddNoteSheet(
             pickedFileName = path.substringAfterLast("/").substringAfterLast(":")
             if (pickedFileName?.endsWith(".pdf", ignoreCase = true) == true) {
                 noteType = "pdf"
+            } else if (pickedFileName?.endsWith(".html", ignoreCase = true) == true || pickedFileName?.endsWith(".htm", ignoreCase = true) == true) {
+                noteType = "html"
             } else if (pickedFileName?.endsWith(".md", ignoreCase = true) == true) {
                 noteType = "markdown"
             } else if (pickedFileName?.endsWith(".txt", ignoreCase = true) == true) {
@@ -89,10 +91,17 @@ fun AddNoteSheet(
         }
     }
 
-    val effectiveExam = lockedFilter.exam ?: inputExam.trim()
-    val effectiveSubject = lockedFilter.subject ?: inputSubject.trim()
-    val effectiveChapter = lockedFilter.chapter ?: inputChapter.trim()
-    val effectiveTopic = inputTopic.trim().ifBlank { effectiveChapter }
+    val rawExam = lockedFilter.exam ?: inputExam.trim()
+    val effectiveExam = viewModel.findCanonicalMatch(rawExam, viewModel.listExams())
+
+    val rawSubject = lockedFilter.subject ?: inputSubject.trim()
+    val effectiveSubject = viewModel.findCanonicalMatch(rawSubject, viewModel.listSubjects(effectiveExam))
+
+    val rawChapter = lockedFilter.chapter ?: inputChapter.trim()
+    val effectiveChapter = viewModel.findCanonicalMatch(rawChapter, viewModel.listChapters(effectiveExam, effectiveSubject))
+
+    val rawTopic = inputTopic.trim().ifBlank { effectiveChapter }
+    val effectiveTopic = viewModel.findCanonicalMatch(rawTopic, viewModel.listTopics(effectiveExam, effectiveSubject, effectiveChapter))
 
     val isSaveEnabled = effectiveExam.isNotBlank() &&
             effectiveSubject.isNotBlank() &&
@@ -110,11 +119,14 @@ fun AddNoteSheet(
                 val ext = when (noteType) {
                     "pdf" -> "pdf"
                     "txt" -> "txt"
+                    "html" -> "html"
                     else -> "md"
                 }
                 val relFilePath = "notes/files/$noteId.$ext"
                 val finalContent = if (noteContent.isNotBlank()) {
                     noteContent.trim()
+                } else if (noteType == "html") {
+                    "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>${title.trim()}</title>\n</head>\n<body>\n  <h2>${title.trim()}</h2>\n  <p>Study notes for <strong>$effectiveChapter</strong> ($effectiveSubject).</p>\n</body>\n</html>"
                 } else {
                     "# ${title.trim()}\n\nStudy notes for $effectiveChapter ($effectiveSubject)."
                 }
@@ -141,50 +153,22 @@ fun AddNoteSheet(
             }
         }
     ) {
-        // Tree Lock: Unlocked hierarchy fields
-        if (lockedFilter.exam == null) {
-            OutlinedTextField(
-                value = inputExam,
-                onValueChange = { inputExam = it },
-                label = { Text("Exam Name *") },
-                placeholder = { Text("e.g. UPSI, SSC, UP_POLICE") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (lockedFilter.subject == null) {
-            OutlinedTextField(
-                value = inputSubject,
-                onValueChange = { inputSubject = it },
-                label = { Text("Subject Name *") },
-                placeholder = { Text("e.g. General Hindi, Law, Reasoning") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (lockedFilter.chapter == null) {
-            OutlinedTextField(
-                value = inputChapter,
-                onValueChange = { inputChapter = it },
-                label = { Text("Chapter Name *") },
-                placeholder = { Text("e.g. Preamble, IPC Offences") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        OutlinedTextField(
-            value = inputTopic,
-            onValueChange = { inputTopic = it },
-            label = { Text("Topic (Optional)") },
-            placeholder = { Text("Defaults to chapter name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+        // Master CSV Hierarchy Pickers (Cascading, Searchable Dropdown with Explicit Add New)
+        HierarchyPicker(
+            lockedFilter = lockedFilter,
+            availableExams = viewModel.listExams(),
+            getSubjects = { viewModel.listSubjects(it) },
+            getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
+            getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
+            selectedExam = inputExam,
+            onExamChange = { inputExam = it },
+            selectedSubject = inputSubject,
+            onSubjectChange = { inputSubject = it },
+            selectedChapter = inputChapter,
+            onChapterChange = { inputChapter = it },
+            selectedTopic = inputTopic,
+            onTopicChange = { inputTopic = it },
+            showTopic = true
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -213,7 +197,7 @@ fun AddNoteSheet(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            listOf("markdown", "txt", "pdf").forEach { type ->
+            listOf("markdown", "txt", "pdf", "html").forEach { type ->
                 FilterChip(
                     selected = noteType == type,
                     onClick = { noteType = type },

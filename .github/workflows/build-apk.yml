@@ -61,7 +61,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace --info
+        run: |
+          V_CODE=$(( 100 + GITHUB_RUN_NUMBER ))
+          echo "Building debug APK with versionCode=$V_CODE"
+          ./gradlew assembleDebug -PversionCode=$V_CODE --stacktrace --info
 
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4

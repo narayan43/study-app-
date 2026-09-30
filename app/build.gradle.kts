@@ -1,4 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.io.FileInputStream
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -12,24 +14,53 @@ android {
   namespace = "com.example"
   compileSdk = 35
 
+  val buildVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull()
+    ?: project.findProperty("versionCode")?.toString()?.toIntOrNull()
+    ?: 2
+  val buildVersionName = System.getenv("VERSION_NAME")
+    ?: project.findProperty("versionName")?.toString()
+    ?: "1.0.1"
+
   defaultConfig {
     applicationId = "com.aistudio.upsiprep.kxmpzq"
     minSdk = 24
     targetSdk = 35
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = buildVersionCode
+    versionName = buildVersionName
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
   signingConfigs {
-    val keystorePath = System.getenv("KEYSTORE_PATH")
-    if (keystorePath != null && file(keystorePath).exists()) {
+    val keyPropsFile = rootProject.file("key.properties")
+    val keyProps = Properties().apply {
+      if (keyPropsFile.exists()) {
+        load(FileInputStream(keyPropsFile))
+      }
+    }
+
+    val storeFilePath = System.getenv("KEYSTORE_PATH")
+      ?: keyProps.getProperty("storeFile")
+      ?: if (rootProject.file("release.keystore").exists()) rootProject.file("release.keystore").absolutePath else null
+
+    val storePasswordVal = System.getenv("STORE_PASSWORD")
+      ?: System.getenv("KEYSTORE_PASSWORD")
+      ?: keyProps.getProperty("storePassword")
+
+    val keyAliasVal = System.getenv("KEY_ALIAS")
+      ?: keyProps.getProperty("keyAlias")
+      ?: "upload"
+
+    val keyPasswordVal = System.getenv("KEY_PASSWORD")
+      ?: keyProps.getProperty("keyPassword")
+      ?: storePasswordVal
+
+    if (storeFilePath != null && file(storeFilePath).exists()) {
       create("release") {
-        storeFile = file(keystorePath)
-        storePassword = System.getenv("STORE_PASSWORD")
-        keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-        keyPassword = System.getenv("KEY_PASSWORD")
+        storeFile = file(storeFilePath)
+        storePassword = storePasswordVal
+        keyAlias = keyAliasVal
+        keyPassword = keyPasswordVal
       }
     }
   }

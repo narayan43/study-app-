@@ -144,15 +144,13 @@ fun MistakesScreen(
 
                         items(chapMap.toList()) { (chapter, qIds) ->
                             Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 12.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
-                                Column(modifier = Modifier.padding(14.dp)) {
+                                Column(modifier = Modifier.padding(16.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -161,13 +159,14 @@ fun MistakesScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = chapter,
-                                                style = MaterialTheme.typography.titleSmall,
+                                                style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
+                                            Spacer(modifier = Modifier.height(2.dp))
                                             Text(
                                                 text = "${qIds.size} wrong question(s)",
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = HardSolid,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -175,7 +174,7 @@ fun MistakesScreen(
 
                                         Box(
                                             modifier = Modifier
-                                                .size(28.dp)
+                                                .size(34.dp)
                                                 .clip(CircleShape)
                                                 .background(HardTint),
                                             contentAlignment = Alignment.Center
@@ -184,12 +183,12 @@ fun MistakesScreen(
                                                 Icons.Default.ErrorOutline,
                                                 contentDescription = null,
                                                 tint = HardSolid,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(20.dp)
                                             )
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
 
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -213,8 +212,8 @@ fun MistakesScreen(
                                             )
                                         ) {
                                             Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Retest", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Retest", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                         }
 
                                         OutlinedButton(
@@ -234,8 +233,8 @@ fun MistakesScreen(
                                             )
                                         ) {
                                             Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Open Notes", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Open Notes", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                         }
                                     }
                                 }

@@ -56,6 +56,7 @@ import com.example.ui.components.AppTab
 import com.example.ui.components.DrillDownSelector
 import com.example.ui.components.ExamPrepBottomBar
 import com.example.ui.components.ExamPrepTopBar
+import com.example.ui.components.UpdateDialog
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.MistakesScreen
 import com.example.ui.screens.NotesScreen
@@ -98,6 +99,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
 
     var showAddTestQuestionSheet by remember { mutableStateOf(false) }
     var showQuestionAuthoringMenu by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
 
     val questionCsvPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -227,6 +229,12 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
         )
     }
 
+    if (showUpdateDialog) {
+        UpdateDialog(
+            onDismiss = { showUpdateDialog = false }
+        )
+    }
+
     // SAF folder picker launcher
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -272,7 +280,8 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
                     },
                     onImportQuestions = if (currentTab == AppTab.TEST) {
                         { showQuestionAuthoringMenu = true }
-                    } else null
+                    } else null,
+                    onCheckUpdate = { showUpdateDialog = true }
                 )
             }
         },

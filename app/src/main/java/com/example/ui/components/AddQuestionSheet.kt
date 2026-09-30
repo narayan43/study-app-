@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
@@ -28,7 +29,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Note
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -98,10 +98,17 @@ fun AddQuestionSheet(
     var noteMenuExpanded by remember { mutableStateOf(false) }
     var videoMenuExpanded by remember { mutableStateOf(false) }
 
-    val effectiveExam = lockedFilter.exam ?: inputExam.trim()
-    val effectiveSubject = lockedFilter.subject ?: inputSubject.trim()
-    val effectiveChapter = lockedFilter.chapter ?: inputChapter.trim()
-    val effectiveTopic = inputTopic.trim().ifBlank { effectiveChapter }
+    val rawExam = lockedFilter.exam ?: inputExam.trim()
+    val effectiveExam = viewModel.findCanonicalMatch(rawExam, viewModel.listExams())
+
+    val rawSubject = lockedFilter.subject ?: inputSubject.trim()
+    val effectiveSubject = viewModel.findCanonicalMatch(rawSubject, viewModel.listSubjects(effectiveExam))
+
+    val rawChapter = lockedFilter.chapter ?: inputChapter.trim()
+    val effectiveChapter = viewModel.findCanonicalMatch(rawChapter, viewModel.listChapters(effectiveExam, effectiveSubject))
+
+    val rawTopic = inputTopic.trim().ifBlank { effectiveChapter }
+    val effectiveTopic = viewModel.findCanonicalMatch(rawTopic, viewModel.listTopics(effectiveExam, effectiveSubject, effectiveChapter))
 
     // Filter available notes and videos for linking by current exam/subject/chapter
     val availableNotes = remember(effectiveExam, effectiveSubject, effectiveChapter) {
@@ -189,50 +196,22 @@ fun AddQuestionSheet(
             }
         }
     ) {
-        // Tree Lock: Unlocked hierarchy fields
-        if (lockedFilter.exam == null) {
-            OutlinedTextField(
-                value = inputExam,
-                onValueChange = { inputExam = it },
-                label = { Text("Exam Name *") },
-                placeholder = { Text("e.g. UPSI, SSC, UP_POLICE") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (lockedFilter.subject == null) {
-            OutlinedTextField(
-                value = inputSubject,
-                onValueChange = { inputSubject = it },
-                label = { Text("Subject Name *") },
-                placeholder = { Text("e.g. Law, General Hindi, GK") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (lockedFilter.chapter == null) {
-            OutlinedTextField(
-                value = inputChapter,
-                onValueChange = { inputChapter = it },
-                label = { Text("Chapter Name *") },
-                placeholder = { Text("e.g. Fundamental Rights, IPC Offences") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        OutlinedTextField(
-            value = inputTopic,
-            onValueChange = { inputTopic = it },
-            label = { Text("Topic (Optional)") },
-            placeholder = { Text("Defaults to chapter name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+        // Master CSV Hierarchy Pickers (Cascading, Searchable Dropdown with Explicit Add New)
+        HierarchyPicker(
+            lockedFilter = lockedFilter,
+            availableExams = viewModel.listExams(),
+            getSubjects = { viewModel.listSubjects(it) },
+            getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
+            getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
+            selectedExam = inputExam,
+            onExamChange = { inputExam = it },
+            selectedSubject = inputSubject,
+            onSubjectChange = { inputSubject = it },
+            selectedChapter = inputChapter,
+            onChapterChange = { inputChapter = it },
+            selectedTopic = inputTopic,
+            onTopicChange = { inputTopic = it },
+            showTopic = true
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -296,7 +275,7 @@ fun AddQuestionSheet(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Correct Answer Selector (A / B / C / D)
+        // Correct Answer Selector (A / B / C / D) - 2x2 Grid so Option D is always 100% visible
         Text(
             text = "Correct Answer",
             style = MaterialTheme.typography.labelMedium,
@@ -304,18 +283,56 @@ fun AddQuestionSheet(
             color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(modifier = Modifier.height(6.dp))
+
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            listOf("A", "B", "C", "D").forEach { opt ->
+            listOf("A", "B").forEach { opt ->
                 FilterChip(
                     selected = correctAnswer == opt,
                     onClick = { correctAnswer = opt },
-                    label = { Text("Option $opt", fontWeight = FontWeight.Bold) },
+                    label = {
+                        Text(
+                            text = "Option $opt",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    },
                     leadingIcon = if (correctAnswer == opt) {
                         { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                     } else null,
+                    modifier = Modifier.weight(1f),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = EasySolid,
+                        selectedLabelColor = MaterialTheme.colorScheme.surface,
+                        selectedLeadingIconColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            listOf("C", "D").forEach { opt ->
+                FilterChip(
+                    selected = correctAnswer == opt,
+                    onClick = { correctAnswer = opt },
+                    label = {
+                        Text(
+                            text = "Option $opt",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    },
+                    leadingIcon = if (correctAnswer == opt) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    } else null,
+                    modifier = Modifier.weight(1f),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = EasySolid,
                         selectedLabelColor = MaterialTheme.colorScheme.surface,
@@ -352,7 +369,7 @@ fun AddQuestionSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Note, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.Note, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         val noteLabel = selectedNoteId?.let { id ->
                             val n = availableNotes.find { it.noteId == id }

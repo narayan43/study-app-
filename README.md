@@ -93,16 +93,63 @@ Data/
 - **Reels:** Vertical video lecture feed with video playback, chapter navigation, and one-tap test generation from questions linked to the current reel.
 - **First-Run Demo Data:** If no external `Data/` folder is linked, the app automatically runs in Demo Mode using embedded sample data so all tabs are fully functional immediately.
 
+## In-Place Updates (No Uninstall Required)
+
+ExamPrep CSV is designed so newer versions published on GitHub install seamlessly as a normal Android **in-place update**. Your local CSVs, notes, HTML files, attempt logs, and reels are completely preserved.
+
+### 1. Stable Identity
+- **Application ID (Package Name):** `com.aistudio.upsiprep.kxmpzq` (permanently fixed).
+- **Version Code:** Automatically incremented on every release (`100 + GITHUB_RUN_NUMBER`). Android requires `versionCode` to be strictly greater than the installed version.
+- **Signing Key:** Every release APK must be signed with the **exact same release keystore**.
+
+> ⚠️ **Important Sideload Rule:**
+> If your phone ever displays "App not installed" or asks to uninstall first when installing an APK update:
+> **DO NOT uninstall the app!** Uninstalling wipes your local notes, attempts, and CSV files.
+> The prompt occurs because either the APK package name changed or the APK was signed with a different keystore certificate than the currently installed version. Ensure both builds are signed with the same release key.
+
+### 2. One-Time Release Keystore Setup
+
+To enable signed in-place updates across GitHub Releases:
+
+1. **Generate your release keystore** using the included helper script:
+   ```bash
+   ./scripts/generate-release-keystore.sh
+   ```
+   Or manually with `keytool`:
+   ```bash
+   keytool -genkey -v -keystore release.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+2. **Add GitHub Actions Secrets** in your repository under **Settings → Secrets and variables → Actions**:
+   - `KEYSTORE_BASE64`: Output of `base64 -w 0 release.keystore`
+   - `KEYSTORE_PASSWORD`: The password for your keystore
+   - `KEY_ALIAS`: `upload`
+   - `KEY_PASSWORD`: The password for the key alias
+
+3. **Local Builds:**
+   Copy `key.properties.example` to `key.properties` (this file is ignored by Git) to sign release builds locally:
+   ```bash
+   cp key.properties.example key.properties
+   ./gradlew assembleRelease
+   ```
+
+### 3. In-App Update Checker
+
+Tap the **Update** icon (down-arrow device icon) in the top bar near the Refresh button:
+- Queries the latest release from the GitHub repository (`narayan43/study-app-`).
+- Compares installed vs. remote version code and release tags.
+- Downloads the APK directly to app cache and initiates the system package installer session.
+- Seamlessly updates the application in-place while keeping all user data intact.
+
 ## Download the APK
 
-- **From GitHub Actions:** Navigate to **GitHub → Actions → workflow Build APK → latest green run → Artifacts → `app-debug`**.
-- **From GitHub Releases:** Download `ExamPrep-vX.Y.apk` directly from **GitHub → Releases** when a tag `v*` is published.
-  To publish a new release APK, tag your commit and push the tag (e.g. tag `v1.0.1` and push tags):
+- **From GitHub Releases:** Download `ExamPrepCSV-vX.Y.apk` directly from **GitHub → Releases** when a tag `v*` is published.
+  To publish a new release, tag your commit and push:
   ```bash
-  git tag v1.0.1
-  git push origin v1.0.1
+  git tag v1.0.2
+  git push origin v1.0.2
   ```
-  The `Release APK` workflow will automatically build, package, and attach `ExamPrep-v1.0.1.apk` to the GitHub release.
+- **From GitHub Actions:** Navigate to **GitHub → Actions → workflow Build APK → latest run → Artifacts → `app-debug`**.
 
 ## Build locally
 
@@ -112,23 +159,16 @@ Build the debug APK using the Gradle wrapper:
 ./gradlew assembleDebug
 ```
 
-APK output location:
+Build the signed release APK (when `key.properties` or environment variables exist):
+```bash
+./gradlew assembleRelease
+```
+
+APK output locations:
 ```
 app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/release/app-release.apk
 ```
-
-## Release Signing (Optional)
-
-The GitHub Actions workflows produce and upload the debug APK by default so that CI runs succeed immediately without requiring signing secrets.
-
-If you wish to configure signed release builds in GitHub Actions:
-1. Go to your GitHub repository **Settings → Secrets and variables → Actions**.
-2. Add the following repository secrets:
-   - `KEYSTORE_BASE64`: Base64-encoded string of your `.jks` or `.keystore` file.
-   - `KEYSTORE_PASSWORD`: Password for your keystore.
-   - `KEY_ALIAS`: Alias of your release signing key.
-   - `KEY_PASSWORD`: Password for the key alias.
-3. Build locally with `./gradlew assembleRelease` or enable release signing in your CI workflow.
 
 ## Requirements
 

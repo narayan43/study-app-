@@ -113,6 +113,10 @@ class ExamPrepViewModel(
     fun listSubjects(exam: String?): List<String> = dataService.listSubjects(exam)
     fun listChapters(exam: String?, subject: String?): List<String> = dataService.listChapters(exam, subject)
     fun listTopics(exam: String?, subject: String?, chapter: String?): List<String> = dataService.listTopics(exam, subject, chapter)
+    fun listVideoTitles(exam: String?, subject: String?, chapter: String?, topic: String?): List<String> =
+        dataService.listVideoTitles(exam, subject, chapter, topic)
+    fun findCanonicalMatch(input: String, candidates: List<String>): String =
+        dataService.findCanonicalMatch(input, candidates)
 
     fun startTestSlice(source: TestSliceSource) {
         _activeTestSource.value = source
