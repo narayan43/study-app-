@@ -29,6 +29,16 @@ android {
   }
 
   signingConfigs {
+    val debugUploadKeyFile = rootProject.file("debug-upload.keystore")
+    val debugUpload = create("debugUpload") {
+      storeFile = debugUploadKeyFile
+      storePassword = "android"
+      keyAlias = "examprep"
+      keyPassword = "android"
+      enableV1Signing = true
+      enableV2Signing = true
+    }
+
     val keyPropsFile = rootProject.file("key.properties")
     val keyProps = Properties().apply {
       if (keyPropsFile.exists()) {
@@ -52,7 +62,7 @@ android {
       ?: keyProps.getProperty("keyPassword")
       ?: storePasswordVal
 
-    if (storeFilePath != null && file(storeFilePath).exists()) {
+    if (storeFilePath != null && file(storeFilePath).exists() && storeFilePath != "debug-upload.keystore") {
       create("release") {
         storeFile = file(storeFilePath)
         storePassword = storePasswordVal
@@ -67,12 +77,10 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfigs.findByName("release")?.let {
-        signingConfig = it
-      }
+      signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debugUpload")
     }
     debug {
-      // Uses Android's built-in default debug keystore
+      signingConfig = signingConfigs.getByName("debugUpload")
     }
   }
   compileOptions {

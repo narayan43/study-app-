@@ -12,11 +12,12 @@
 .kotlin/
 .build-outputs/
 
-# Release signing keys & local properties (keep debug.keystore preserved)
+# Release signing keys & local properties (keep debug.keystore and debug-upload.keystore preserved)
 key.properties
 *.jks
 release.keystore
 release.keystore.base64
+!debug-upload.keystore
 
 # Keep gradle wrapper files tracked
 !gradle/wrapper/gradle-wrapper.jar

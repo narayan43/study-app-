@@ -147,6 +147,11 @@ Tap the **Update** icon (down-arrow device icon) in the top bar near the Refresh
 - Releases page: https://github.com/narayan43/study-app-/releases  
   Latest APK = highest vX.Y.Z
 
+> **One-time transition note:**
+> - Uninstall the old AI Studio / build-5…8 app first (different signature).
+> - Install ExamPrep-1.0.2.apk from Releases.
+> - Later versions 1.0.3, 1.0.4… will update in place because they share this keystore.
+
 ## Build locally
 
 Build the debug APK using the Gradle wrapper:

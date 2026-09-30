@@ -71,21 +71,40 @@ object AppUpdateManager {
             val releaseName = json.optString("name", tagName).trim()
             val body = json.optString("body", "Bug fixes and improvements.").trim()
 
-            // Look for .apk file in assets
+            // Look for ExamPrep-*.apk file in assets (avoiding any unsigned assets)
             val assetsArray = json.optJSONArray("assets")
             var apkUrl: String? = null
             var apkName: String? = null
             var apkSize: Long = 0L
 
             if (assetsArray != null) {
+                // First pass: look specifically for ExamPrep-*.apk
                 for (i in 0 until assetsArray.length()) {
                     val asset = assetsArray.getJSONObject(i)
                     val name = asset.optString("name", "")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
+                    if (name.startsWith("ExamPrep-", ignoreCase = true) &&
+                        name.endsWith(".apk", ignoreCase = true) &&
+                        !name.contains("unsigned", ignoreCase = true)
+                    ) {
                         apkUrl = asset.optString("browser_download_url", "")
                         apkName = name
                         apkSize = asset.optLong("size", 0L)
                         break
+                    }
+                }
+                // Fallback pass: any non-unsigned .apk
+                if (apkUrl == null) {
+                    for (i in 0 until assetsArray.length()) {
+                        val asset = assetsArray.getJSONObject(i)
+                        val name = asset.optString("name", "")
+                        if (name.endsWith(".apk", ignoreCase = true) &&
+                            !name.contains("unsigned", ignoreCase = true)
+                        ) {
+                            apkUrl = asset.optString("browser_download_url", "")
+                            apkName = name
+                            apkSize = asset.optLong("size", 0L)
+                            break
+                        }
                     }
                 }
             }
