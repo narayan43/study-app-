@@ -143,14 +143,9 @@ Tap the **Update** icon (down-arrow device icon) in the top bar near the Refresh
 
 ## How to install
 
-- Actions artifact after each main push
-- Releases page: https://github.com/narayan43/study-app-/releases  
-  Latest APK = highest vX.Y.Z
-
-> **One-time transition note:**
-> - Uninstall the old AI Studio / build-5…8 app first (different signature).
-> - Install ExamPrep-1.0.2.apk from Releases.
-> - Later versions 1.0.3, 1.0.4… will update in place because they share this keystore.
+- Download the `app-debug` artifact from the latest GitHub Actions build after each main push.
+- Install directly over the existing app (no need to uninstall; updates in place).
+- All data in the linked Data folder is preserved.
 
 ## Build locally
 

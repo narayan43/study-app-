@@ -1,4 +1,4 @@
-name: Build and Release APK
+name: Build APK
 
 on:
   push:
@@ -12,22 +12,17 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-main
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
-
-permissions:
-  contents: write
 
 jobs:
   build:
-    name: Build & Release APK
+    name: Build Debug APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up JDK 17 (Temurin)
         uses: actions/setup-java@v5
@@ -62,30 +57,23 @@ jobs:
             cp .env.example .env 2>/dev/null || touch .env
           fi
 
-      - name: Compute Next Version
-        id: next_version
-        run: |
-          chmod +x scripts/next_version.sh
-          ./scripts/next_version.sh
-
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
         run: |
-          VERSION="${{ steps.next_version.outputs.version }}"
-          CODE="${{ steps.next_version.outputs.code }}"
-          echo "Building ExamPrep with appVersionName=$VERSION, appVersionCode=$CODE"
-          ./gradlew assembleDebug -PappVersionName=$VERSION -PappVersionCode=$CODE --stacktrace
+          V_CODE=$(( 100 + GITHUB_RUN_NUMBER ))
+          echo "Building debug APK with versionCode=$V_CODE (100 + GITHUB_RUN_NUMBER)"
+          ./gradlew assembleDebug -PversionCode=$V_CODE -PappVersionCode=$V_CODE --stacktrace
 
-      - name: Verify APK is signed before proceeding
+      - name: Verify APK is signed before uploading
         run: |
           APK_FILE="app/build/outputs/apk/debug/app-debug.apk"
           if [ ! -f "$APK_FILE" ]; then
             echo "::error::Build output not found at $APK_FILE"
             exit 1
           fi
-          echo "Verifying signature of $APK_FILE..."
+          echo "Verifying signature of $APK_FILE with apksigner..."
           $ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner verify --verbose "$APK_FILE"
           echo "Verifying META-INF signature files (.SF and .RSA)..."
           unzip -l "$APK_FILE" | grep -E "META-INF/.*\.(SF|RSA)" || {
@@ -96,56 +84,7 @@ jobs:
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ExamPrep-${{ steps.next_version.outputs.version }}
+          name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-
-      - name: Prepare Release Assets, Tag, and Changelog
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        id: release_info
-        run: |
-          VERSION="${{ steps.next_version.outputs.version }}"
-          CODE="${{ steps.next_version.outputs.code }}"
-          TAG="v$VERSION"
-
-          # Fail if tag already exists on remote
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "::error::Tag $TAG already exists! Aborting release step to prevent overwriting."
-            exit 1
-          fi
-
-          # Prepare named APK artifact
-          cp app/build/outputs/apk/debug/app-debug.apk "ExamPrep-$VERSION.apk"
-
-          # Verify signature of the release asset
-          $ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner verify --verbose "ExamPrep-$VERSION.apk"
-
-          # Create and push git tag
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
-
-          # Capture commit message and metadata for release changelog
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s%n%n%b")
-          {
-            echo "changelog<<EOF"
-            echo "### Release ExamPrep v$VERSION"
-            echo "**versionCode:** $CODE"
-            echo ""
-            echo "#### Changes:"
-            echo "$COMMIT_MSG"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.next_version.outputs.version }}
-          name: ExamPrep ${{ steps.next_version.outputs.version }}
-          body: ${{ steps.release_info.outputs.changelog }}
-          files: ExamPrep-${{ steps.next_version.outputs.version }}.apk
-          draft: false
-          prerelease: false

@@ -18,12 +18,14 @@ android {
     applicationId = "com.aistudio.upsiprep.kxmpzq"
     minSdk = 24
     targetSdk = 35
-    versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull()
-      ?: (project.findProperty("versionCode") as String?)?.toIntOrNull()
-      ?: 1
-    versionName = (project.findProperty("appVersionName") as String?)
-      ?: (project.findProperty("versionName") as String?)
-      ?: "1.0.0"
+    versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull()
+      ?: (project.findProperty("appVersionCode") as String?)?.toIntOrNull()
+      ?: System.getenv("VERSION_CODE")?.toIntOrNull()
+      ?: 100
+    versionName = (project.findProperty("versionName") as String?)
+      ?: (project.findProperty("appVersionName") as String?)
+      ?: System.getenv("VERSION_NAME")
+      ?: "1.0.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

@@ -107,14 +107,12 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
         if (uri != null) {
             scope.launch {
                 try {
-                    val csvContent = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
-                    val (count, remapped) = viewModel.importQuestionsFromCsv(csvContent)
-                    val msg = if (remapped > 0) {
-                        "Imported $count questions ($remapped remapped)"
-                    } else {
-                        "Imported $count questions"
+                    if (!viewModel.isFolderLinked.value) {
+                        Toast.makeText(context, "No Data folder linked. Please link a Data folder first.", Toast.LENGTH_LONG).show()
+                        return@launch
                     }
-                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    val count = viewModel.importAndMergeQuestionsCsv(uri)
+                    Toast.makeText(context, "Moved to Data/questions/ & merged $count questions into questions.csv", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                 }

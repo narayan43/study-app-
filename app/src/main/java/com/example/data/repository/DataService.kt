@@ -3,6 +3,8 @@ package com.example.data.repository
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import com.example.data.csv.CsvHelper
 import com.example.data.model.AttemptLog
@@ -53,10 +55,12 @@ class DataService(private val context: Context) {
         if (uriStr != null) {
             externalTreeUri = Uri.parse(uriStr)
         }
-        // First-run internal fallback & demo data verification
+        // First-run internal fallback & demo data verification (never wipe if files already exist)
         if (externalTreeUri == null) {
-            localDataDir.mkdirs()
-            DummyDataGenerator.generateDummyDataTree(localDataDir)
+            if (!localDataDir.exists() || localDataDir.listFiles().isNullOrEmpty()) {
+                localDataDir.mkdirs()
+                DummyDataGenerator.generateDummyDataTree(localDataDir)
+            }
         }
     }
 
@@ -449,6 +453,320 @@ class DataService(private val context: Context) {
         cachedVideos = cachedVideos + item
         appendToFile("videos/videos.csv", CsvHelper.formatVideoLine(item), CsvHelper.VIDEOS_HEADER)
         reloadData()
+    }
+
+    suspend fun appendNoteRow(item: NoteItem) = withContext(Dispatchers.IO) {
+        cachedNotes = cachedNotes + item
+        appendToFile("notes/notes.csv", CsvHelper.formatNoteLine(item), CsvHelper.NOTES_HEADER)
+        reloadData()
+    }
+
+    suspend fun appendVideoRow(item: VideoItem) = withContext(Dispatchers.IO) {
+        cachedVideos = cachedVideos + item
+        appendToFile("videos/videos.csv", CsvHelper.formatVideoLine(item), CsvHelper.VIDEOS_HEADER)
+        reloadData()
+    }
+
+    fun writeNoteFileContent(relPath: String, content: String) {
+        writeOrCopyFile(relPath, content = content)
+    }
+
+    /**
+     * Queries original file name from a content or file URI.
+     */
+    fun queryFileName(context: Context, uri: Uri): String {
+        if (uri.scheme == "content") {
+            try {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx != -1) {
+                            val name = cursor.getString(idx)
+                            if (!name.isNullOrBlank()) return name
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        val seg = uri.lastPathSegment ?: uri.toString()
+        val name = seg.substringAfterLast("/").substringAfterLast(":")
+        return name.ifBlank { "file" }
+    }
+
+    /**
+     * Resolves unique relative destination path inside [destFolder] (e.g. "notes/files", "videos/files", "questions")
+     * without overwriting existing files by appending a numerical suffix (_1, _2...).
+     */
+    fun resolveUniqueDestPath(destFolder: String, originalFileName: String): String {
+        val cleanFolder = destFolder.trim('/')
+        val treeUri = externalTreeUri
+        val nameWithoutExt = originalFileName.substringBeforeLast(".")
+        val ext = if (originalFileName.contains(".")) ".${originalFileName.substringAfterLast(".")}" else ""
+
+        if (treeUri != null) {
+            var current = DocumentFile.fromTreeUri(context, treeUri)
+            val folderParts = cleanFolder.split("/").filter { it.isNotBlank() }
+            for (part in folderParts) {
+                current = current?.findFile(part)
+            }
+            if (current == null || current.findFile(originalFileName) == null) {
+                return "$cleanFolder/$originalFileName"
+            }
+            var counter = 1
+            while (true) {
+                val candidate = "${nameWithoutExt}_$counter$ext"
+                if (current.findFile(candidate) == null) {
+                    return "$cleanFolder/$candidate"
+                }
+                counter++
+            }
+        } else {
+            val folder = File(localDataDir, cleanFolder)
+            if (!File(folder, originalFileName).exists()) {
+                return "$cleanFolder/$originalFileName"
+            }
+            var counter = 1
+            while (true) {
+                val candidate = "${nameWithoutExt}_$counter$ext"
+                if (!File(folder, candidate).exists()) {
+                    return "$cleanFolder/$candidate"
+                }
+                counter++
+            }
+        }
+    }
+
+    /**
+     * Copies content from [sourceUri] to [destRelPath] in the linked Data folder.
+     */
+    fun copySourceUriToDest(sourceUri: Uri, destRelPath: String): Boolean {
+        val cleanRel = destRelPath.trimStart('/')
+        val mime = when {
+            cleanRel.endsWith(".txt") || cleanRel.endsWith(".md") -> "text/plain"
+            cleanRel.endsWith(".html") || cleanRel.endsWith(".htm") -> "text/html"
+            cleanRel.endsWith(".pdf") -> "application/pdf"
+            cleanRel.endsWith(".mp4") -> "video/mp4"
+            cleanRel.endsWith(".csv") -> "text/comma-separated-values"
+            else -> "application/octet-stream"
+        }
+
+        val treeUri = externalTreeUri
+        if (treeUri != null) {
+            val docFile = getOrCreateDocumentFile(treeUri, cleanRel, headerIfNew = "", mimeType = mime)
+                ?: return false
+            try {
+                context.contentResolver.openOutputStream(docFile.uri, "wt")?.use { os ->
+                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        input.copyTo(os)
+                    }
+                } ?: return false
+                return true
+            } catch (_: Exception) {
+                return false
+            }
+        } else {
+            val f = File(localDataDir, cleanRel)
+            f.parentFile?.mkdirs()
+            try {
+                context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    f.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: return false
+                return true
+            } catch (_: Exception) {
+                return false
+            }
+        }
+    }
+
+    /**
+     * Deletes original source document after moving it into the Data folder.
+     */
+    fun deleteOriginalSourceFile(context: Context, uri: Uri): Boolean {
+        var deleted = false
+        try {
+            if (DocumentsContract.isDocumentUri(context, uri)) {
+                deleted = DocumentsContract.deleteDocument(context.contentResolver, uri)
+            }
+        } catch (_: Exception) {}
+
+        if (!deleted) {
+            try {
+                val rows = context.contentResolver.delete(uri, null, null)
+                if (rows > 0) deleted = true
+            } catch (_: Exception) {}
+        }
+
+        if (!deleted) {
+            try {
+                val path = uri.path
+                if (path != null) {
+                    val f = File(path)
+                    if (f.exists()) {
+                        deleted = f.delete()
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return deleted
+    }
+
+    /**
+     * Moves a picked file (note, video, or questions CSV) from anywhere on the phone
+     * into the linked Data folder. Deletes the original so only one file remains in Data.
+     */
+    suspend fun movePickedFileIntoDataFolder(
+        sourceUri: Uri,
+        destFolder: String
+    ): String = withContext(Dispatchers.IO) {
+        if (!isFolderLinked()) {
+            throw IllegalStateException("No Data folder is linked. Please link a Data folder first.")
+        }
+
+        val originalName = queryFileName(context, sourceUri)
+        val destRelPath = resolveUniqueDestPath(destFolder, originalName)
+
+        val copied = copySourceUriToDest(sourceUri, destRelPath)
+        if (!copied) {
+            throw IllegalStateException("Failed to copy file into linked Data folder: $destRelPath")
+        }
+
+        deleteOriginalSourceFile(context, sourceUri)
+        destRelPath
+    }
+
+    /**
+     * Moves a questions CSV into Data/questions/, merges its rows into questions/questions.csv
+     * by question_id (retaining existing questions not in incoming file), and adds links if
+     * note ID or video ID is selected.
+     */
+    suspend fun importAndMergeQuestionsCsv(
+        sourceUri: Uri,
+        linkedNoteId: String? = null,
+        linkedVideoId: String? = null
+    ): Int = withContext(Dispatchers.IO) {
+        if (!isFolderLinked()) {
+            throw IllegalStateException("No Data folder is linked. Please link a Data folder first.")
+        }
+
+        val csvText = context.contentResolver.openInputStream(sourceUri)?.bufferedReader()?.use { it.readText() }
+            ?: throw IllegalArgumentException("Cannot read source CSV file")
+
+        val headerLine = csvText.lines().firstOrNull { it.isNotBlank() } ?: ""
+        if (!CsvHelper.validateQuestionsHeader(headerLine)) {
+            throw IllegalArgumentException("Invalid questions.csv header: must include exam, question_id, question_text, correct_answer")
+        }
+
+        val incomingQuestions = CsvHelper.parseQuestions(csvText)
+        if (incomingQuestions.isEmpty()) {
+            throw IllegalArgumentException("No valid questions found in CSV")
+        }
+
+        // 1. Move file into Data/questions/
+        val originalName = queryFileName(context, sourceUri)
+        val destRelPath = resolveUniqueDestPath("questions", originalName)
+        val copied = copySourceUriToDest(sourceUri, destRelPath)
+        if (!copied) {
+            throw IllegalStateException("Failed to move CSV into Data/questions/ folder")
+        }
+        deleteOriginalSourceFile(context, sourceUri)
+
+        // 2. Merge incoming questions into questions/questions.csv by question_id
+        val incomingMap = incomingQuestions.associateBy { it.questionId.trim().lowercase() }
+        val mergedList = mutableListOf<QuestionItem>()
+        val seenIds = mutableSetOf<String>()
+
+        for (existing in cachedQuestions) {
+            val key = existing.questionId.trim().lowercase()
+            val incoming = incomingMap[key]
+            if (incoming != null) {
+                mergedList.add(incoming)
+                seenIds.add(key)
+            } else {
+                mergedList.add(existing)
+            }
+        }
+
+        for (incoming in incomingQuestions) {
+            val key = incoming.questionId.trim().lowercase()
+            if (!seenIds.contains(key)) {
+                mergedList.add(incoming)
+                seenIds.add(key)
+            }
+        }
+
+        val builder = StringBuilder()
+        builder.append(CsvHelper.QUESTIONS_HEADER).append("\n")
+        for (q in mergedList) {
+            builder.append(CsvHelper.formatQuestionLine(q))
+        }
+        overwriteFile("questions/questions.csv", builder.toString())
+
+        // 3. Add link rows for imported questions if a note ID or video ID is selected
+        val cleanNoteId = linkedNoteId?.trim()
+        if (!cleanNoteId.isNullOrBlank()) {
+            for (q in incomingQuestions) {
+                val qId = q.questionId.trim()
+                val exists = cachedNoteQuestions.any {
+                    it.noteId.equals(cleanNoteId, ignoreCase = true) &&
+                    it.questionId.equals(qId, ignoreCase = true)
+                }
+                if (!exists) {
+                    appendToFile(
+                        "links/note_questions.csv",
+                        CsvHelper.formatNoteQuestionLine(cleanNoteId, qId),
+                        CsvHelper.NOTE_QUESTIONS_HEADER
+                    )
+                }
+            }
+        }
+
+        val cleanVideoId = linkedVideoId?.trim()
+        if (!cleanVideoId.isNullOrBlank()) {
+            for (q in incomingQuestions) {
+                val qId = q.questionId.trim()
+                val exists = cachedVideoQuestions.any {
+                    it.videoId.equals(cleanVideoId, ignoreCase = true) &&
+                    it.questionId.equals(qId, ignoreCase = true)
+                }
+                if (!exists) {
+                    appendToFile(
+                        "links/video_questions.csv",
+                        CsvHelper.formatVideoQuestionLine(cleanVideoId, qId),
+                        CsvHelper.VIDEO_QUESTIONS_HEADER
+                    )
+                }
+            }
+        }
+
+        reloadData()
+        incomingQuestions.size
+    }
+
+    fun overwriteFile(relPath: String, content: String) {
+        val cleanRel = relPath.trimStart('/')
+        val uri = externalTreeUri
+        if (uri != null) {
+            val docFile = getOrCreateDocumentFile(uri, cleanRel, headerIfNew = "")
+            if (docFile != null) {
+                try {
+                    context.contentResolver.openOutputStream(docFile.uri, "wt")?.use { stream ->
+                        stream.write(content.toByteArray())
+                    }
+                    return
+                } catch (_: Exception) {}
+            }
+        }
+        val f = File(localDataDir, cleanRel)
+        f.parentFile?.mkdirs()
+        f.writeText(content)
     }
 
     suspend fun appendNoteLink(noteId: String, questionId: String) = withContext(Dispatchers.IO) {

@@ -115,20 +115,37 @@ fun AddNoteSheet(
         onDismiss = onDismiss,
         onSave = {
             scope.launch {
-                val noteId = viewModel.nextNoteId()
-                val ext = when (noteType) {
-                    "pdf" -> "pdf"
-                    "txt" -> "txt"
-                    "html" -> "html"
-                    else -> "md"
+                val pickedUri = pickedFileUri
+                if (pickedUri != null && !viewModel.isFolderLinked.value) {
+                    Toast.makeText(context, "No Data folder linked. Please link a Data folder first.", Toast.LENGTH_LONG).show()
+                    return@launch
                 }
-                val relFilePath = "notes/files/$noteId.$ext"
-                val finalContent = if (noteContent.isNotBlank()) {
-                    noteContent.trim()
-                } else if (noteType == "html") {
-                    "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>${title.trim()}</title>\n</head>\n<body>\n  <h2>${title.trim()}</h2>\n  <p>Study notes for <strong>$effectiveChapter</strong> ($effectiveSubject).</p>\n</body>\n</html>"
+
+                val noteId = viewModel.nextNoteId()
+                val relFilePath = if (pickedUri != null) {
+                    try {
+                        viewModel.moveNoteFileToData(pickedUri)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Error moving note file: ${e.message}", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
                 } else {
-                    "# ${title.trim()}\n\nStudy notes for $effectiveChapter ($effectiveSubject)."
+                    val ext = when (noteType) {
+                        "pdf" -> "pdf"
+                        "txt" -> "txt"
+                        "html" -> "html"
+                        else -> "md"
+                    }
+                    val path = "notes/files/$noteId.$ext"
+                    val finalContent = if (noteContent.isNotBlank()) {
+                        noteContent.trim()
+                    } else if (noteType == "html") {
+                        "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>${title.trim()}</title>\n</head>\n<body>\n  <h2>${title.trim()}</h2>\n  <p>Study notes for <strong>$effectiveChapter</strong> ($effectiveSubject).</p>\n</body>\n</html>"
+                    } else {
+                        "# ${title.trim()}\n\nStudy notes for $effectiveChapter ($effectiveSubject)."
+                    }
+                    viewModel.writeNoteFileContent(path, finalContent)
+                    path
                 }
 
                 val newNote = NoteItem(
@@ -142,12 +159,7 @@ fun AddNoteSheet(
                     noteType = noteType
                 )
 
-                if (pickedFileUri != null) {
-                    viewModel.appendNote(newNote, sourceFileUri = pickedFileUri)
-                } else {
-                    viewModel.appendNote(newNote, content = finalContent)
-                }
-
+                viewModel.appendNoteRow(newNote)
                 Toast.makeText(context, "Created $noteId", Toast.LENGTH_SHORT).show()
                 onDismiss()
             }

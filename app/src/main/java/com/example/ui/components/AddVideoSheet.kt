@@ -138,9 +138,20 @@ fun AddVideoSheet(
         onDismiss = onDismiss,
         onSave = {
             scope.launch {
+                val pickedUri = pickedVideoUri
+                if (videoSourceType == "phone" && pickedUri != null && !viewModel.isFolderLinked.value) {
+                    Toast.makeText(context, "No Data folder linked. Please link a Data folder first.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
                 val videoId = viewModel.nextVideoId()
-                val targetPath = if (videoSourceType == "phone") {
-                    "videos/files/$videoId.mp4"
+                val targetPath = if (videoSourceType == "phone" && pickedUri != null) {
+                    try {
+                        viewModel.moveVideoFileToData(pickedUri)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Error moving video file: ${e.message}", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
                 } else {
                     manualPath.trim()
                 }
@@ -156,12 +167,7 @@ fun AddVideoSheet(
                     durationSec = effectiveDuration
                 )
 
-                if (videoSourceType == "phone" && pickedVideoUri != null) {
-                    viewModel.appendVideo(newVideo, sourceVideoUri = pickedVideoUri)
-                } else {
-                    viewModel.appendVideo(newVideo)
-                }
-
+                viewModel.appendVideoRow(newVideo)
                 Toast.makeText(context, "Created $videoId", Toast.LENGTH_SHORT).show()
                 onDismiss()
             }

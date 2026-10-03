@@ -182,6 +182,44 @@ class ExamPrepViewModel(
     suspend fun appendQuestion(item: QuestionItem) = dataService.appendQuestion(item)
     suspend fun appendNote(item: NoteItem, content: String? = null, sourceFileUri: Uri? = null) = dataService.appendNote(item, content, sourceFileUri)
     suspend fun appendVideo(item: VideoItem, sourceVideoUri: Uri? = null) = dataService.appendVideo(item, sourceVideoUri)
+
+    suspend fun moveNoteFileToData(sourceUri: Uri): String {
+        val destPath = dataService.movePickedFileIntoDataFolder(sourceUri, "notes/files")
+        reloadData()
+        return destPath
+    }
+
+    suspend fun moveVideoFileToData(sourceUri: Uri): String {
+        val destPath = dataService.movePickedFileIntoDataFolder(sourceUri, "videos/files")
+        reloadData()
+        return destPath
+    }
+
+    suspend fun appendNoteRow(item: NoteItem) {
+        dataService.appendNoteRow(item)
+        reloadData()
+    }
+
+    suspend fun appendVideoRow(item: VideoItem) {
+        dataService.appendVideoRow(item)
+        reloadData()
+    }
+
+    fun writeNoteFileContent(relPath: String, content: String) {
+        dataService.writeNoteFileContent(relPath, content)
+    }
+
+    suspend fun importAndMergeQuestionsCsv(
+        sourceUri: Uri,
+        linkedNoteId: String? = null,
+        linkedVideoId: String? = null
+    ): Int {
+        val noteId = linkedNoteId ?: activeNote.value?.noteId
+        val videoId = linkedVideoId ?: activeVideo.value?.videoId
+        val count = dataService.importAndMergeQuestionsCsv(sourceUri, noteId, videoId)
+        reloadData()
+        return count
+    }
     suspend fun appendNoteLink(noteId: String, questionId: String) = dataService.appendNoteLink(noteId, questionId)
     suspend fun appendVideoLink(videoId: String, questionId: String) = dataService.appendVideoLink(videoId, questionId)
     fun remapIncomingQuestionIds(rows: List<QuestionItem>) = dataService.remapIncomingQuestionIds(rows)
