@@ -733,6 +733,211 @@ class DataService(private val context: Context) {
         remapped.size
     }
 
+    fun getQuestionBankExams(): List<String> =
+        cachedQuestions.map { it.exam.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+
+    fun getQuestionBankSubjects(): List<String> =
+        cachedQuestions.map { it.subject.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+
+    fun getQuestionBankChapters(): List<String> =
+        cachedQuestions.map { it.chapter.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+
+    fun getQuestionBankTopics(): List<String> =
+        cachedQuestions.map { it.topic.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+
+    /**
+     * Imports questions from CSV or ZIP for an open reel or open note:
+     * - Overwrites tree columns ONLY if specified (non-blank). If left empty, keeps CSV value.
+     * - Question text, 4 options, correct answer, and images stay from CSV unless forced.
+     * - Extracts images into questions/images/ if ZIP.
+     * - Remaps colliding question_ids to new IDs (never overwrites existing questions).
+     * - Appends rows to questions/questions.csv.
+     * - Appends video_id + question_id to links/video_questions.csv (if reel).
+     * - Appends note_id + question_id to links/note_questions.csv (if note).
+     * - Does NOT change videos.csv, notes.csv, reel file, note file, or logs.
+     */
+    suspend fun importQuestionsForLinkedEntity(
+        sourceUri: Uri,
+        isZip: Boolean,
+        overrideExam: String?,
+        overrideSubject: String?,
+        overrideChapter: String?,
+        overrideTopic: String?,
+        linkedNoteId: String? = null,
+        linkedVideoId: String? = null
+    ): Int = withContext(Dispatchers.IO) {
+        val incomingQuestions: List<QuestionItem>
+        if (isZip) {
+            var csvContent: String? = null
+            val imagesToExtract = mutableListOf<Pair<String, ByteArray>>()
+
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                java.util.zip.ZipInputStream(input).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        val name = entry.name.replace('\\', '/')
+                        if (!entry.isDirectory) {
+                            val fileName = name.substringAfterLast("/")
+                            if (fileName.equals("questions.csv", ignoreCase = true)) {
+                                csvContent = zis.bufferedReader().readText()
+                            } else if (name.contains("questions/images/", ignoreCase = true) || name.contains("images/", ignoreCase = true)) {
+                                val relImgPath = "questions/images/$fileName"
+                                val bytes = zis.readBytes()
+                                imagesToExtract.add(Pair(relImgPath, bytes))
+                            }
+                        }
+                        entry = zis.nextEntry
+                    }
+                }
+            }
+
+            if (csvContent == null) {
+                throw IllegalArgumentException("No questions.csv found inside ZIP archive")
+            }
+
+            val headerLine = csvContent.lines().firstOrNull { it.isNotBlank() } ?: ""
+            if (!CsvHelper.validateQuestionsHeader(headerLine)) {
+                throw IllegalArgumentException("Invalid questions.csv header inside ZIP")
+            }
+
+            incomingQuestions = CsvHelper.parseQuestions(csvContent)
+            if (incomingQuestions.isEmpty()) {
+                throw IllegalArgumentException("No valid questions found in ZIP's questions.csv")
+            }
+
+            // Extract images into questions/images/
+            for ((relPath, bytes) in imagesToExtract) {
+                writeOrCopyFile(relPath, byteContent = bytes)
+            }
+        } else {
+            val csvText = context.contentResolver.openInputStream(sourceUri)?.bufferedReader()?.use { it.readText() }
+                ?: throw IllegalArgumentException("Cannot read source CSV file")
+
+            val headerLine = csvText.lines().firstOrNull { it.isNotBlank() } ?: ""
+            if (!CsvHelper.validateQuestionsHeader(headerLine)) {
+                throw IllegalArgumentException("Invalid questions.csv header: must include exam, question_id, question_text, correct_answer")
+            }
+
+            incomingQuestions = CsvHelper.parseQuestions(csvText)
+            if (incomingQuestions.isEmpty()) {
+                throw IllegalArgumentException("No valid questions found in CSV")
+            }
+        }
+
+        // Apply override tree columns ONLY if provided/non-blank
+        val cleanExam = overrideExam?.trim()?.takeIf { it.isNotBlank() }
+        val cleanSubject = overrideSubject?.trim()?.takeIf { it.isNotBlank() }
+        val cleanChapter = overrideChapter?.trim()?.takeIf { it.isNotBlank() }
+        val cleanTopic = overrideTopic?.trim()?.takeIf { it.isNotBlank() }
+
+        val adjustedQuestions = incomingQuestions.map { q ->
+            q.copy(
+                exam = cleanExam ?: q.exam,
+                subject = cleanSubject ?: q.subject,
+                chapter = cleanChapter ?: q.chapter,
+                topic = cleanTopic ?: q.topic
+            )
+        }
+
+        // Remap any colliding question IDs
+        val (remapped, _) = remapIncomingQuestionIds(adjustedQuestions)
+        appendQuestionsBulk(remapped)
+
+        // Automatically link to open note
+        val cleanNoteId = linkedNoteId?.trim()
+        if (!cleanNoteId.isNullOrBlank()) {
+            for (q in remapped) {
+                val qId = q.questionId.trim()
+                val exists = cachedNoteQuestions.any {
+                    it.noteId.equals(cleanNoteId, ignoreCase = true) &&
+                    it.questionId.equals(qId, ignoreCase = true)
+                }
+                if (!exists) {
+                    appendToFile(
+                        "links/note_questions.csv",
+                        CsvHelper.formatNoteQuestionLine(cleanNoteId, qId),
+                        CsvHelper.NOTE_QUESTIONS_HEADER
+                    )
+                    cachedNoteQuestions = cachedNoteQuestions + NoteQuestionLink(cleanNoteId, qId)
+                }
+            }
+        }
+
+        // Automatically link to open reel
+        val cleanVideoId = linkedVideoId?.trim()
+        if (!cleanVideoId.isNullOrBlank()) {
+            for (q in remapped) {
+                val qId = q.questionId.trim()
+                val exists = cachedVideoQuestions.any {
+                    it.videoId.equals(cleanVideoId, ignoreCase = true) &&
+                    it.questionId.equals(qId, ignoreCase = true)
+                }
+                if (!exists) {
+                    appendToFile(
+                        "links/video_questions.csv",
+                        CsvHelper.formatVideoQuestionLine(cleanVideoId, qId),
+                        CsvHelper.VIDEO_QUESTIONS_HEADER
+                    )
+                    cachedVideoQuestions = cachedVideoQuestions + VideoQuestionLink(cleanVideoId, qId)
+                }
+            }
+        }
+
+        reloadData()
+        remapped.size
+    }
+
+    /**
+     * Appends a single question to questions/questions.csv and links to open reel or open note.
+     * Does NOT touch videos.csv, notes.csv, reel file, note file, or logs.
+     */
+    suspend fun addSingleQuestion(
+        question: QuestionItem,
+        linkedNoteId: String? = null,
+        linkedVideoId: String? = null
+    ): QuestionItem = withContext(Dispatchers.IO) {
+        val (remapped, _) = remapIncomingQuestionIds(listOf(question))
+        val finalQuestion = remapped.first()
+
+        appendToFile("questions/questions.csv", CsvHelper.formatQuestionLine(finalQuestion), CsvHelper.QUESTIONS_HEADER)
+        cachedQuestions = cachedQuestions + finalQuestion
+
+        val cleanNoteId = linkedNoteId?.trim()
+        if (!cleanNoteId.isNullOrBlank()) {
+            val exists = cachedNoteQuestions.any {
+                it.noteId.equals(cleanNoteId, ignoreCase = true) &&
+                it.questionId.equals(finalQuestion.questionId, ignoreCase = true)
+            }
+            if (!exists) {
+                appendToFile(
+                    "links/note_questions.csv",
+                    CsvHelper.formatNoteQuestionLine(cleanNoteId, finalQuestion.questionId),
+                    CsvHelper.NOTE_QUESTIONS_HEADER
+                )
+                cachedNoteQuestions = cachedNoteQuestions + NoteQuestionLink(cleanNoteId, finalQuestion.questionId)
+            }
+        }
+
+        val cleanVideoId = linkedVideoId?.trim()
+        if (!cleanVideoId.isNullOrBlank()) {
+            val exists = cachedVideoQuestions.any {
+                it.videoId.equals(cleanVideoId, ignoreCase = true) &&
+                it.questionId.equals(finalQuestion.questionId, ignoreCase = true)
+            }
+            if (!exists) {
+                appendToFile(
+                    "links/video_questions.csv",
+                    CsvHelper.formatVideoQuestionLine(cleanVideoId, finalQuestion.questionId),
+                    CsvHelper.VIDEO_QUESTIONS_HEADER
+                )
+                cachedVideoQuestions = cachedVideoQuestions + VideoQuestionLink(cleanVideoId, finalQuestion.questionId)
+            }
+        }
+
+        reloadData()
+        finalQuestion
+    }
+
     /**
      * Deletes a single relative file from Data folder if it exists.
      */

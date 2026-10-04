@@ -25,8 +25,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -81,6 +83,8 @@ import com.example.ui.components.AddContentSheetChrome
 import com.example.ui.components.AddNoteSheet
 import com.example.ui.components.CircularAddButton
 import com.example.ui.components.DrillDownSelector
+import com.example.ui.components.LinkedQuestionImportSheet
+import com.example.ui.components.LinkedSingleQuestionSheet
 import com.example.ui.viewmodel.ExamPrepViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -526,6 +530,8 @@ fun NoteReaderView(
 ) {
     val openedAt = remember { System.currentTimeMillis() }
     var readSeconds by remember { mutableIntStateOf(0) }
+    var showImportSheet by remember { mutableStateOf(false) }
+    var showAddSingleSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -574,6 +580,28 @@ fun NoteReaderView(
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                         )
                     }
+                    IconButton(
+                        onClick = { showImportSheet = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.UploadFile,
+                            contentDescription = "Import questions.csv",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { showAddSingleSheet = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Add single question",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         },
@@ -584,47 +612,85 @@ fun NoteReaderView(
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            onClose(openedAt, readSeconds)
-                            onTestQuestionsFromThisNote()
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
+                    // Row 1: Question Actions (Import questions.csv & Add single question)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Test this note", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        OutlinedButton(
+                            onClick = { showImportSheet = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Import questions.csv", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showAddSingleSheet = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add single question", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
                     }
 
-                    OutlinedButton(
-                        onClick = {
-                            onClose(openedAt, readSeconds)
-                            onTestWholeChapter()
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Row 2: Test Actions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Test whole chapter", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Button(
+                            onClick = {
+                                onClose(openedAt, readSeconds)
+                                onTestQuestionsFromThisNote()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Test this note", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onClose(openedAt, readSeconds)
+                                onTestWholeChapter()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Text("Test whole chapter", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
                     }
                 }
             }
@@ -682,6 +748,32 @@ fun NoteReaderView(
                     )
                 }
             }
+        }
+
+        if (showImportSheet) {
+            LinkedQuestionImportSheet(
+                targetType = "Note",
+                targetTitle = note.title,
+                targetId = note.noteId,
+                viewModel = viewModel,
+                onDismiss = { showImportSheet = false },
+                onSuccess = { count ->
+                    showImportSheet = false
+                }
+            )
+        }
+
+        if (showAddSingleSheet) {
+            LinkedSingleQuestionSheet(
+                targetType = "Note",
+                targetTitle = note.title,
+                targetId = note.noteId,
+                viewModel = viewModel,
+                onDismiss = { showAddSingleSheet = false },
+                onSuccess = { qId ->
+                    showAddSingleSheet = false
+                }
+            )
         }
     }
 }

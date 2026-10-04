@@ -21,11 +21,11 @@ android {
     versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull()
       ?: (project.findProperty("appVersionCode") as String?)?.toIntOrNull()
       ?: System.getenv("VERSION_CODE")?.toIntOrNull()
-      ?: 100
+      ?: 103
     versionName = (project.findProperty("versionName") as String?)
       ?: (project.findProperty("appVersionName") as String?)
       ?: System.getenv("VERSION_NAME")
-      ?: "1.0.2"
+      ?: "1.0.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

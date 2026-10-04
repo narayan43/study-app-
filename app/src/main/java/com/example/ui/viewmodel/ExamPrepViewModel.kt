@@ -257,6 +257,49 @@ class ExamPrepViewModel(
         reloadData()
         return res
     }
+
+    fun getQuestionBankExams(): List<String> = dataService.getQuestionBankExams()
+    fun getQuestionBankSubjects(): List<String> = dataService.getQuestionBankSubjects()
+    fun getQuestionBankChapters(): List<String> = dataService.getQuestionBankChapters()
+    fun getQuestionBankTopics(): List<String> = dataService.getQuestionBankTopics()
+
+    suspend fun importQuestionsForLinkedEntity(
+        sourceUri: Uri,
+        isZip: Boolean,
+        overrideExam: String?,
+        overrideSubject: String?,
+        overrideChapter: String?,
+        overrideTopic: String?,
+        linkedNoteId: String? = null,
+        linkedVideoId: String? = null
+    ): Int {
+        val count = dataService.importQuestionsForLinkedEntity(
+            sourceUri = sourceUri,
+            isZip = isZip,
+            overrideExam = overrideExam,
+            overrideSubject = overrideSubject,
+            overrideChapter = overrideChapter,
+            overrideTopic = overrideTopic,
+            linkedNoteId = linkedNoteId,
+            linkedVideoId = linkedVideoId
+        )
+        reloadData()
+        return count
+    }
+
+    suspend fun addSingleQuestionForLinkedEntity(
+        question: QuestionItem,
+        linkedNoteId: String? = null,
+        linkedVideoId: String? = null
+    ): QuestionItem {
+        val created = dataService.addSingleQuestion(
+            question = question,
+            linkedNoteId = linkedNoteId,
+            linkedVideoId = linkedVideoId
+        )
+        reloadData()
+        return created
+    }
 }
 
 class ExamPrepViewModelFactory(
