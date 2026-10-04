@@ -111,7 +111,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
                         Toast.makeText(context, "No Data folder linked. Please link a Data folder first.", Toast.LENGTH_LONG).show()
                         return@launch
                     }
-                    val count = viewModel.importAndMergeQuestionsCsv(uri)
+                    val count = viewModel.importAndMergeQuestionsCsv(uri, overrideFilter = testFilter)
                     Toast.makeText(context, "Moved to Data/questions/ & merged $count questions into questions.csv", Toast.LENGTH_LONG).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -126,7 +126,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
         if (uri != null) {
             scope.launch {
                 try {
-                    val (count, remapped) = viewModel.importQuestionsFromZip(uri)
+                    val (count, remapped) = viewModel.importQuestionsFromZip(uri, overrideFilter = testFilter)
                     val msg = if (remapped > 0) {
                         "Imported $count questions from ZIP ($remapped remapped)"
                     } else {
@@ -221,7 +221,8 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
 
     if (showAddTestQuestionSheet) {
         AddQuestionSheet(
-            lockedFilter = testFilter,
+            lockedFilter = DrillDownFilter(),
+            initialFilter = testFilter,
             viewModel = viewModel,
             onDismiss = { showAddTestQuestionSheet = false }
         )

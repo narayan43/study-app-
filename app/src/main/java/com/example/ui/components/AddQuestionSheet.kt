@@ -63,18 +63,19 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AddQuestionSheet(
-    lockedFilter: DrillDownFilter,
+    lockedFilter: DrillDownFilter = DrillDownFilter(),
+    initialFilter: DrillDownFilter = DrillDownFilter(),
     viewModel: ExamPrepViewModel,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Hierarchy inputs (editable only if not locked)
-    var inputExam by remember { mutableStateOf(lockedFilter.exam ?: "") }
-    var inputSubject by remember { mutableStateOf(lockedFilter.subject ?: "") }
-    var inputChapter by remember { mutableStateOf(lockedFilter.chapter ?: "") }
-    var inputTopic by remember { mutableStateOf(lockedFilter.topic ?: "") }
+    // Hierarchy inputs (prefilled from initialFilter or lockedFilter)
+    var inputExam by remember { mutableStateOf(lockedFilter.exam ?: initialFilter.exam ?: "") }
+    var inputSubject by remember { mutableStateOf(lockedFilter.subject ?: initialFilter.subject ?: "") }
+    var inputChapter by remember { mutableStateOf(lockedFilter.chapter ?: initialFilter.chapter ?: "") }
+    var inputTopic by remember { mutableStateOf(lockedFilter.topic ?: initialFilter.topic ?: "") }
 
     // Question body inputs
     var questionText by remember { mutableStateOf("") }

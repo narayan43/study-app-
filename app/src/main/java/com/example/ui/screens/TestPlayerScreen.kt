@@ -25,11 +25,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -79,7 +81,9 @@ import com.example.ui.theme.OnEasyDark
 import com.example.ui.theme.OnHard
 import com.example.ui.theme.OnHardDark
 import com.example.ui.viewmodel.ExamPrepViewModel
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +93,7 @@ fun TestPlayerScreen(
     onOpenNoteReader: (NoteItem) -> Unit,
     onOpenReel: (VideoItem) -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     val questions by viewModel.activeTestQuestions.collectAsState()
     val sliceSource by viewModel.activeTestSource.collectAsState()
     val isDarkTheme by viewModel.isDarkTheme.collectAsState()
@@ -98,6 +103,7 @@ fun TestPlayerScreen(
     var isSubmitted by remember { mutableStateOf(false) }
     var timerSeconds by remember { mutableIntStateOf(0) }
     var showLinkedNotes by remember { mutableStateOf(false) }
+    var showDeleteQuestionConfirm by remember { mutableStateOf(false) }
 
     val safeIndex = if (questions.isEmpty()) 0 else currentIndex.coerceIn(0, questions.size - 1)
     val currentQuestion = questions.getOrNull(safeIndex)
@@ -186,6 +192,38 @@ fun TestPlayerScreen(
         return
     }
 
+    if (showDeleteQuestionConfirm && currentQuestion != null) {
+        val q = currentQuestion
+        AlertDialog(
+            onDismissRequest = { showDeleteQuestionConfirm = false },
+            title = { Text("Delete Question?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Are you sure you want to delete question \"${q.questionId}\"?\n\nThis removes its row from questions/questions.csv and unlinks it from notes and videos. Logs will not be touched.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteQuestionConfirm = false
+                        scope.launch {
+                            viewModel.deleteQuestion(q.questionId)
+                            if (safeIndex >= questions.size - 1 && safeIndex > 0) {
+                                currentIndex = safeIndex - 1
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDeleteQuestionConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -227,7 +265,19 @@ fun TestPlayerScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { showDeleteQuestionConfirm = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Delete question",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,

@@ -212,14 +212,39 @@ class ExamPrepViewModel(
     suspend fun importAndMergeQuestionsCsv(
         sourceUri: Uri,
         linkedNoteId: String? = null,
-        linkedVideoId: String? = null
+        linkedVideoId: String? = null,
+        overrideFilter: DrillDownFilter? = null
     ): Int {
         val noteId = linkedNoteId ?: activeNote.value?.noteId
         val videoId = linkedVideoId ?: activeVideo.value?.videoId
-        val count = dataService.importAndMergeQuestionsCsv(sourceUri, noteId, videoId)
+        val count = dataService.importAndMergeQuestionsCsv(sourceUri, noteId, videoId, overrideFilter)
         reloadData()
         return count
     }
+
+    suspend fun deleteNote(noteId: String, filePath: String? = null) {
+        dataService.deleteNote(noteId, filePath)
+        if (_activeNote.value?.noteId.equals(noteId, ignoreCase = true)) {
+            _activeNote.value = null
+            _activeNoteContent.value = ""
+        }
+        reloadData()
+    }
+
+    suspend fun deleteVideo(videoId: String, videoPath: String? = null) {
+        dataService.deleteVideo(videoId, videoPath)
+        if (_activeVideo.value?.videoId.equals(videoId, ignoreCase = true)) {
+            _activeVideo.value = null
+        }
+        reloadData()
+    }
+
+    suspend fun deleteQuestion(questionId: String) {
+        dataService.deleteQuestion(questionId)
+        _activeTestQuestions.value = _activeTestQuestions.value.filterNot { it.questionId.equals(questionId, ignoreCase = true) }
+        reloadData()
+    }
+
     suspend fun appendNoteLink(noteId: String, questionId: String) = dataService.appendNoteLink(noteId, questionId)
     suspend fun appendVideoLink(videoId: String, questionId: String) = dataService.appendVideoLink(videoId, questionId)
     fun remapIncomingQuestionIds(rows: List<QuestionItem>) = dataService.remapIncomingQuestionIds(rows)
@@ -227,7 +252,11 @@ class ExamPrepViewModel(
     suspend fun appendNotesBulk(notes: List<NoteItem>) = dataService.appendNotesBulk(notes)
     suspend fun appendQuestionsBulk(questions: List<QuestionItem>) = dataService.appendQuestionsBulk(questions)
     suspend fun importQuestionsFromCsv(csvText: String): Pair<Int, Int> = dataService.importQuestionsFromCsv(csvText)
-    suspend fun importQuestionsFromZip(zipUri: Uri): Pair<Int, Int> = dataService.importQuestionsFromZip(zipUri)
+    suspend fun importQuestionsFromZip(zipUri: Uri, overrideFilter: DrillDownFilter? = null): Pair<Int, Int> {
+        val res = dataService.importQuestionsFromZip(zipUri, overrideFilter)
+        reloadData()
+        return res
+    }
 }
 
 class ExamPrepViewModelFactory(

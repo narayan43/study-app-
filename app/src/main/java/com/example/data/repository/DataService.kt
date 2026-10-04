@@ -650,7 +650,8 @@ class DataService(private val context: Context) {
     suspend fun importAndMergeQuestionsCsv(
         sourceUri: Uri,
         linkedNoteId: String? = null,
-        linkedVideoId: String? = null
+        linkedVideoId: String? = null,
+        overrideFilter: DrillDownFilter? = null
     ): Int = withContext(Dispatchers.IO) {
         if (!isFolderLinked()) {
             throw IllegalStateException("No Data folder is linked. Please link a Data folder first.")
@@ -678,41 +679,23 @@ class DataService(private val context: Context) {
         }
         deleteOriginalSourceFile(context, sourceUri)
 
-        // 2. Merge incoming questions into questions/questions.csv by question_id
-        val incomingMap = incomingQuestions.associateBy { it.questionId.trim().lowercase() }
-        val mergedList = mutableListOf<QuestionItem>()
-        val seenIds = mutableSetOf<String>()
-
-        for (existing in cachedQuestions) {
-            val key = existing.questionId.trim().lowercase()
-            val incoming = incomingMap[key]
-            if (incoming != null) {
-                mergedList.add(incoming)
-                seenIds.add(key)
-            } else {
-                mergedList.add(existing)
-            }
+        // 2. Apply override filter for any currently selected tree levels
+        val adjustedQuestions = incomingQuestions.map { q ->
+            val exam = overrideFilter?.exam?.takeIf { it.isNotBlank() } ?: q.exam
+            val subject = overrideFilter?.subject?.takeIf { it.isNotBlank() } ?: q.subject
+            val chapter = overrideFilter?.chapter?.takeIf { it.isNotBlank() } ?: q.chapter
+            val topic = overrideFilter?.topic?.takeIf { it.isNotBlank() } ?: q.topic
+            q.copy(exam = exam, subject = subject, chapter = chapter, topic = topic)
         }
 
-        for (incoming in incomingQuestions) {
-            val key = incoming.questionId.trim().lowercase()
-            if (!seenIds.contains(key)) {
-                mergedList.add(incoming)
-                seenIds.add(key)
-            }
-        }
+        // 3. Keep existing colliding question_id remap
+        val (remapped, _) = remapIncomingQuestionIds(adjustedQuestions)
+        appendQuestionsBulk(remapped)
 
-        val builder = StringBuilder()
-        builder.append(CsvHelper.QUESTIONS_HEADER).append("\n")
-        for (q in mergedList) {
-            builder.append(CsvHelper.formatQuestionLine(q))
-        }
-        overwriteFile("questions/questions.csv", builder.toString())
-
-        // 3. Add link rows for imported questions if a note ID or video ID is selected
+        // 4. Add link rows for imported questions if a note ID or video ID is selected
         val cleanNoteId = linkedNoteId?.trim()
         if (!cleanNoteId.isNullOrBlank()) {
-            for (q in incomingQuestions) {
+            for (q in remapped) {
                 val qId = q.questionId.trim()
                 val exists = cachedNoteQuestions.any {
                     it.noteId.equals(cleanNoteId, ignoreCase = true) &&
@@ -730,7 +713,7 @@ class DataService(private val context: Context) {
 
         val cleanVideoId = linkedVideoId?.trim()
         if (!cleanVideoId.isNullOrBlank()) {
-            for (q in incomingQuestions) {
+            for (q in remapped) {
                 val qId = q.questionId.trim()
                 val exists = cachedVideoQuestions.any {
                     it.videoId.equals(cleanVideoId, ignoreCase = true) &&
@@ -747,7 +730,147 @@ class DataService(private val context: Context) {
         }
 
         reloadData()
-        incomingQuestions.size
+        remapped.size
+    }
+
+    /**
+     * Deletes a single relative file from Data folder if it exists.
+     */
+    fun deleteRelativeFileIfExists(relPath: String): Boolean {
+        val cleanRel = relPath.trimStart('/')
+        if (cleanRel.isBlank()) return false
+        val treeUri = externalTreeUri
+        if (treeUri != null) {
+            val docFile = findDocumentFile(treeUri, cleanRel)
+            if (docFile != null && docFile.exists()) {
+                try {
+                    return docFile.delete()
+                } catch (_: Exception) {}
+            }
+        }
+        val f = File(localDataDir, cleanRel)
+        if (f.exists()) {
+            try {
+                return f.delete()
+            } catch (_: Exception) {}
+        }
+        return false
+    }
+
+    /**
+     * Deletes a single note by ID:
+     * - Removes note_id row from notes/notes.csv
+     * - Deletes file at file_path if it exists
+     * - Removes link rows for note_id in links/note_questions.csv
+     * - Does NOT touch logs/
+     */
+    suspend fun deleteNote(noteId: String, filePath: String? = null) = withContext(Dispatchers.IO) {
+        val cleanId = noteId.trim()
+        if (cleanId.isBlank()) return@withContext
+
+        // 1. Delete file if present
+        val actualPath = filePath?.ifBlank { null } ?: cachedNotes.firstOrNull { it.noteId.equals(cleanId, ignoreCase = true) }?.filePath
+        if (!actualPath.isNullOrBlank()) {
+            deleteRelativeFileIfExists(actualPath)
+        }
+
+        // 2. Remove row from notes.csv
+        cachedNotes = cachedNotes.filterNot { it.noteId.equals(cleanId, ignoreCase = true) }
+        val builder = StringBuilder()
+        builder.append(CsvHelper.NOTES_HEADER).append("\n")
+        for (n in cachedNotes) {
+            builder.append(CsvHelper.formatNoteLine(n))
+        }
+        overwriteFile("notes/notes.csv", builder.toString())
+
+        // 3. Remove link rows from links/note_questions.csv
+        cachedNoteQuestions = cachedNoteQuestions.filterNot { it.noteId.equals(cleanId, ignoreCase = true) }
+        val linksBuilder = StringBuilder()
+        linksBuilder.append(CsvHelper.NOTE_QUESTIONS_HEADER).append("\n")
+        for (l in cachedNoteQuestions) {
+            linksBuilder.append(CsvHelper.formatNoteQuestionLine(l.noteId, l.questionId))
+        }
+        overwriteFile("links/note_questions.csv", linksBuilder.toString())
+
+        reloadData()
+    }
+
+    /**
+     * Deletes a single reel video by ID:
+     * - Removes video_id row from videos/videos.csv
+     * - Deletes file at video_path if it exists
+     * - Removes link rows for video_id in links/video_questions.csv
+     * - Does NOT touch logs/
+     */
+    suspend fun deleteVideo(videoId: String, videoPath: String? = null) = withContext(Dispatchers.IO) {
+        val cleanId = videoId.trim()
+        if (cleanId.isBlank()) return@withContext
+
+        // 1. Delete file if present
+        val actualPath = videoPath?.ifBlank { null } ?: cachedVideos.firstOrNull { it.videoId.equals(cleanId, ignoreCase = true) }?.videoPath
+        if (!actualPath.isNullOrBlank() && !actualPath.startsWith("http://") && !actualPath.startsWith("https://")) {
+            deleteRelativeFileIfExists(actualPath)
+        }
+
+        // 2. Remove row from videos.csv
+        cachedVideos = cachedVideos.filterNot { it.videoId.equals(cleanId, ignoreCase = true) }
+        val builder = StringBuilder()
+        builder.append(CsvHelper.VIDEOS_HEADER).append("\n")
+        for (v in cachedVideos) {
+            builder.append(CsvHelper.formatVideoLine(v))
+        }
+        overwriteFile("videos/videos.csv", builder.toString())
+
+        // 3. Remove link rows from links/video_questions.csv
+        cachedVideoQuestions = cachedVideoQuestions.filterNot { it.videoId.equals(cleanId, ignoreCase = true) }
+        val linksBuilder = StringBuilder()
+        linksBuilder.append(CsvHelper.VIDEO_QUESTIONS_HEADER).append("\n")
+        for (l in cachedVideoQuestions) {
+            linksBuilder.append(CsvHelper.formatVideoQuestionLine(l.videoId, l.questionId))
+        }
+        overwriteFile("links/video_questions.csv", linksBuilder.toString())
+
+        reloadData()
+    }
+
+    /**
+     * Deletes a single question by ID:
+     * - Removes question_id row from questions/questions.csv
+     * - Removes link rows that point at question_id
+     * - Does NOT touch logs/
+     */
+    suspend fun deleteQuestion(questionId: String) = withContext(Dispatchers.IO) {
+        val cleanId = questionId.trim()
+        if (cleanId.isBlank()) return@withContext
+
+        // 1. Remove from questions.csv
+        cachedQuestions = cachedQuestions.filterNot { it.questionId.equals(cleanId, ignoreCase = true) }
+        val builder = StringBuilder()
+        builder.append(CsvHelper.QUESTIONS_HEADER).append("\n")
+        for (q in cachedQuestions) {
+            builder.append(CsvHelper.formatQuestionLine(q))
+        }
+        overwriteFile("questions/questions.csv", builder.toString())
+
+        // 2. Remove from links/note_questions.csv
+        cachedNoteQuestions = cachedNoteQuestions.filterNot { it.questionId.equals(cleanId, ignoreCase = true) }
+        val nqBuilder = StringBuilder()
+        nqBuilder.append(CsvHelper.NOTE_QUESTIONS_HEADER).append("\n")
+        for (l in cachedNoteQuestions) {
+            nqBuilder.append(CsvHelper.formatNoteQuestionLine(l.noteId, l.questionId))
+        }
+        overwriteFile("links/note_questions.csv", nqBuilder.toString())
+
+        // 3. Remove from links/video_questions.csv
+        cachedVideoQuestions = cachedVideoQuestions.filterNot { it.questionId.equals(cleanId, ignoreCase = true) }
+        val vqBuilder = StringBuilder()
+        vqBuilder.append(CsvHelper.VIDEO_QUESTIONS_HEADER).append("\n")
+        for (l in cachedVideoQuestions) {
+            vqBuilder.append(CsvHelper.formatVideoQuestionLine(l.videoId, l.questionId))
+        }
+        overwriteFile("links/video_questions.csv", vqBuilder.toString())
+
+        reloadData()
     }
 
     fun overwriteFile(relPath: String, content: String) {
@@ -935,7 +1058,10 @@ class DataService(private val context: Context) {
         Pair(remapped.size, remappedCount)
     }
 
-    suspend fun importQuestionsFromZip(zipUri: Uri): Pair<Int, Int> = withContext(Dispatchers.IO) {
+    suspend fun importQuestionsFromZip(
+        zipUri: Uri,
+        overrideFilter: DrillDownFilter? = null
+    ): Pair<Int, Int> = withContext(Dispatchers.IO) {
         var csvContent: String? = null
         val imagesToExtract = mutableListOf<Pair<String, ByteArray>>()
 
@@ -978,7 +1104,16 @@ class DataService(private val context: Context) {
             writeOrCopyFile(relPath, byteContent = bytes)
         }
 
-        val (remapped, idMap) = remapIncomingQuestionIds(parsed)
+        // Apply override filter for any currently selected tree levels
+        val adjustedQuestions = parsed.map { q ->
+            val exam = overrideFilter?.exam?.takeIf { it.isNotBlank() } ?: q.exam
+            val subject = overrideFilter?.subject?.takeIf { it.isNotBlank() } ?: q.subject
+            val chapter = overrideFilter?.chapter?.takeIf { it.isNotBlank() } ?: q.chapter
+            val topic = overrideFilter?.topic?.takeIf { it.isNotBlank() } ?: q.topic
+            q.copy(exam = exam, subject = subject, chapter = chapter, topic = topic)
+        }
+
+        val (remapped, idMap) = remapIncomingQuestionIds(adjustedQuestions)
         appendQuestionsBulk(remapped)
         val remappedCount = idMap.count { it.key != it.value }
         Pair(remapped.size, remappedCount)

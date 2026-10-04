@@ -278,17 +278,7 @@ fun DrillDownSelector(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        val topics = getTopics(currentFilter.exam!!, currentFilter.subject!!, chapter)
-                                        if (topics.size > 1) {
-                                            onFilterChanged(currentFilter.copy(chapter = chapter))
-                                        } else {
-                                            val filter = currentFilter.copy(chapter = chapter, topic = null)
-                                            onFilterChanged(filter)
-                                            onSliceReady(filter)
-                                        }
-                                    },
+                                    .clip(RoundedCornerShape(12.dp)),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -300,22 +290,42 @@ fun DrillDownSelector(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                onFilterChanged(currentFilter.copy(chapter = chapter))
+                                            }
+                                    ) {
                                         Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                         Spacer(modifier = Modifier.width(12.dp))
-                                        Text(
-                                            text = chapter,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
+                                        Column {
+                                            Text(
+                                                text = chapter,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Tap to view chapter & topics",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowForwardIos,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val filter = currentFilter.copy(chapter = chapter, topic = null)
+                                            onFilterChanged(filter)
+                                            onSliceReady(filter)
+                                        },
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
+                                    ) {
+                                        Text("Test", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                             }
                         }

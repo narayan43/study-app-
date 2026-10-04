@@ -1,11 +1,15 @@
 package com.example.ui.screens
 
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,11 +25,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
@@ -136,6 +148,40 @@ fun NotesScreen(
         }
     }
 
+    var noteToDelete by remember { mutableStateOf<NoteItem?>(null) }
+
+    if (noteToDelete != null) {
+        val target = noteToDelete!!
+        AlertDialog(
+            onDismissRequest = { noteToDelete = null },
+            title = { Text("Delete Note?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Are you sure you want to delete \"${target.title}\"?\n\nThis removes its row from notes/notes.csv, unlinks related questions, and deletes the file if it exists. Logs will not be touched.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val n = noteToDelete
+                        noteToDelete = null
+                        if (n != null) {
+                            scope.launch {
+                                viewModel.deleteNote(n.noteId, n.filePath)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { noteToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if (showAddMenu) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showAddMenu = false },
@@ -206,6 +252,7 @@ fun NotesScreen(
         NoteReaderView(
             note = activeNote!!,
             content = activeNoteContent,
+            viewModel = viewModel,
             onClose = { openedAt, timeSpentSec ->
                 viewModel.closeNote(activeNote!!, openedAt, timeSpentSec)
             },
@@ -348,6 +395,9 @@ fun NotesScreen(
                                             )
                                         )
                                     )
+                                },
+                                onDelete = {
+                                    noteToDelete = note
                                 }
                             )
                         }
@@ -362,7 +412,8 @@ fun NoteCard(
     note: NoteItem,
     onOpen: () -> Unit,
     onTestNote: () -> Unit,
-    onTestChapter: () -> Unit
+    onTestChapter: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -393,11 +444,25 @@ fun NoteCard(
                     )
                 }
 
-                Text(
-                    text = note.noteType,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = note.noteType,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Delete note",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -450,11 +515,11 @@ fun NoteCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoteReaderView(
     note: NoteItem,
     content: String,
+    viewModel: ExamPrepViewModel,
     onClose: (openedAt: Long, timeSpentSec: Int) -> Unit,
     onTestQuestionsFromThisNote: () -> Unit,
     onTestWholeChapter: () -> Unit
@@ -471,13 +536,35 @@ fun NoteReaderView(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primary,
+                tonalElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { onClose(openedAt, readSeconds) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = note.title,
                             maxLines = 1,
-                            style = MaterialTheme.typography.titleMedium,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
@@ -487,46 +574,40 @@ fun NoteReaderView(
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                         )
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { onClose(openedAt, readSeconds) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            )
+                }
+            }
         },
         bottomBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                tonalElevation = 4.dp,
+                tonalElevation = 2.dp,
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
                         onClick = {
                             onClose(openedAt, readSeconds)
                             onTestQuestionsFromThisNote()
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
-                        Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Quiz, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Test this note", fontWeight = FontWeight.Bold)
+                        Text("Test this note", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
                     OutlinedButton(
@@ -534,67 +615,136 @@ fun NoteReaderView(
                             onClose(openedAt, readSeconds)
                             onTestWholeChapter()
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         )
                     ) {
-                        Text("Test whole chapter", fontWeight = FontWeight.SemiBold)
+                        Text("Test whole chapter", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                 }
             }
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
         ) {
-            if (note.noteType.equals("html", ignoreCase = true)) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { ctx ->
-                            android.webkit.WebView(ctx).apply {
-                                settings.javaScriptEnabled = false
-                                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                                loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
-                            }
-                        },
-                        update = { webView ->
-                            webView.loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    )
-                }
-            } else {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = content,
-                            style = MaterialTheme.typography.bodyLarge,
-                            lineHeight = 24.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+            val isHtml = note.noteType.equals("html", ignoreCase = true) ||
+                note.filePath.endsWith(".html", ignoreCase = true) ||
+                note.filePath.endsWith(".htm", ignoreCase = true)
+            val isPdf = note.noteType.equals("pdf", ignoreCase = true) ||
+                note.filePath.endsWith(".pdf", ignoreCase = true)
+
+            if (isHtml) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx ->
+                        android.webkit.WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.useWideViewPort = true
+                            settings.loadWithOverviewMode = true
+                            setBackgroundColor(android.graphics.Color.WHITE)
+                            loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
+                        }
+                    },
+                    update = { webView ->
+                        webView.loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (isPdf) {
+                val mediaUri = remember(note.filePath) { viewModel.resolveMediaUri(note.filePath) }
+                if (mediaUri != null) {
+                    PdfViewerView(uri = mediaUri, modifier = Modifier.fillMaxSize())
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+                        Text(content, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 22.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun PdfViewerView(uri: Uri, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var pages by remember(uri) { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var errorMsg by remember(uri) { mutableStateOf<String?>(null) }
+    var isLoading by remember(uri) { mutableStateOf(true) }
+
+    LaunchedEffect(uri) {
+        withContext(Dispatchers.IO) {
+            try {
+                val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                if (pfd != null) {
+                    val renderer = android.graphics.pdf.PdfRenderer(pfd)
+                    val list = mutableListOf<Bitmap>()
+                    val pageCount = renderer.pageCount
+                    for (i in 0 until pageCount) {
+                        val page = renderer.openPage(i)
+                        val w = (page.width * 1.5f).toInt().coerceAtLeast(720)
+                        val h = (page.height * 1.5f).toInt().coerceAtLeast(1080)
+                        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                        val canvas = android.graphics.Canvas(bmp)
+                        canvas.drawColor(android.graphics.Color.WHITE)
+                        page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+                        list.add(bmp)
+                    }
+                    renderer.close()
+                    pfd.close()
+                    pages = list
+                } else {
+                    errorMsg = "Unable to open PDF"
+                }
+            } catch (e: Exception) {
+                errorMsg = "Could not render PDF: ${e.message}"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    if (isLoading) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(modifier = Modifier.size(36.dp))
+        }
+    } else if (errorMsg != null) {
+        Box(modifier = modifier.padding(16.dp), contentAlignment = Alignment.Center) {
+            Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
+        }
+    } else {
+        LazyColumn(modifier = modifier.fillMaxSize()) {
+            items(pages) { bmp ->
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "PDF Page",
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
         }
     }
 }
