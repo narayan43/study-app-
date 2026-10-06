@@ -16,6 +16,8 @@ import com.example.data.model.NoteItem
 import com.example.data.model.NoteQuestionLink
 import com.example.data.model.NoteUsageLog
 import com.example.data.model.QuestionItem
+import com.example.data.model.ReviewStateItem
+import com.example.data.model.TodayAttemptGroupItem
 import com.example.data.model.VideoItem
 import com.example.data.model.VideoQuestionLink
 import com.example.data.model.VideoUsageLog
@@ -44,6 +46,7 @@ class DataService(private val context: Context) {
     private var cachedNoteQuestions: List<NoteQuestionLink> = emptyList()
     private var cachedVideoQuestions: List<VideoQuestionLink> = emptyList()
     private var cachedAttempts: List<AttemptLog> = emptyList()
+    private var cachedReviewStates: MutableMap<String, ReviewStateItem> = mutableMapOf()
     private var cachedNoteUsage: List<NoteUsageLog> = emptyList()
     private var cachedVideoUsage: List<VideoUsageLog> = emptyList()
     private var cachedTree: List<CsvHelper.TreeRow> = emptyList()
@@ -105,6 +108,7 @@ class DataService(private val context: Context) {
     private fun ensureMissingLogFilesOnExternal(treeUri: Uri) {
         val filesWithHeaders = listOf(
             "logs/attempts.csv" to CsvHelper.ATTEMPTS_HEADER,
+            "logs/review_state.csv" to CsvHelper.REVIEW_STATE_HEADER,
             "logs/notes_usage.csv" to CsvHelper.NOTES_USAGE_HEADER,
             "logs/video_usage.csv" to CsvHelper.VIDEO_USAGE_HEADER
         )
@@ -137,11 +141,117 @@ class DataService(private val context: Context) {
         val attCsv = readCsvContent("logs/attempts.csv", CsvHelper.ATTEMPTS_HEADER)
         cachedAttempts = CsvHelper.parseAttempts(attCsv)
 
+        val rsCsv = readCsvContent("logs/review_state.csv", CsvHelper.REVIEW_STATE_HEADER)
+        cachedReviewStates = CsvHelper.parseReviewState(rsCsv).toMutableMap()
+        reconcileReviewStateFromAttempts()
+
         val nuCsv = readCsvContent("logs/notes_usage.csv", CsvHelper.NOTES_USAGE_HEADER)
         cachedNoteUsage = CsvHelper.parseNotesUsage(nuCsv)
 
         val vuCsv = readCsvContent("logs/video_usage.csv", CsvHelper.VIDEO_USAGE_HEADER)
         cachedVideoUsage = CsvHelper.parseVideoUsage(vuCsv)
+    }
+
+    private fun reconcileReviewStateFromAttempts() {
+        val groupedAttempts = cachedAttempts.groupBy { it.questionId.trim() }
+        var changed = false
+        for ((qId, attempts) in groupedAttempts) {
+            if (qId.isBlank()) continue
+            val existing = cachedReviewStates[qId]
+            val sortedAttempts = attempts.sortedBy { it.timestamp }
+            val latestAttempt = sortedAttempts.last()
+
+            if (existing == null) {
+                val timesAttempted = attempts.size
+                val timesCorrect = attempts.count { it.isCorrect == 1 }
+                val timesWrong = attempts.count { it.isCorrect == 0 }
+                val lastRes = if (latestAttempt.isCorrect == 1) "correct" else "wrong"
+                val nextDue = if (lastRes == "correct") {
+                    val days = when (timesCorrect) {
+                        1 -> 1L
+                        2 -> 3L
+                        3 -> 7L
+                        else -> 14L
+                    }
+                    latestAttempt.timestamp + days * 24L * 60 * 60 * 1000L
+                } else {
+                    latestAttempt.timestamp + 10L * 60 * 1000L
+                }
+                cachedReviewStates[qId] = ReviewStateItem(
+                    questionId = qId,
+                    timesAttempted = timesAttempted,
+                    timesCorrect = timesCorrect,
+                    timesWrong = timesWrong,
+                    timesSkipped = 0,
+                    lastResult = lastRes,
+                    lastAttemptAt = latestAttempt.timestamp,
+                    rawLastAttemptAt = latestAttempt.rawTimestamp,
+                    nextDueAt = nextDue,
+                    rawNextDueAt = CsvHelper.formatIsoTimestamp(nextDue)
+                )
+                changed = true
+            } else if (latestAttempt.timestamp > existing.lastAttemptAt) {
+                val timesAttempted = existing.timesAttempted + 1
+                val timesCorrect = existing.timesCorrect + (if (latestAttempt.isCorrect == 1) 1 else 0)
+                val timesWrong = existing.timesWrong + (if (latestAttempt.isCorrect == 0) 1 else 0)
+                val lastRes = if (latestAttempt.isCorrect == 1) "correct" else "wrong"
+                val nextDue = if (lastRes == "correct") {
+                    val days = when (timesCorrect) {
+                        1 -> 1L
+                        2 -> 3L
+                        3 -> 7L
+                        else -> 14L
+                    }
+                    latestAttempt.timestamp + days * 24L * 60 * 60 * 1000L
+                } else {
+                    latestAttempt.timestamp + 10L * 60 * 1000L
+                }
+                cachedReviewStates[qId] = existing.copy(
+                    timesAttempted = timesAttempted,
+                    timesCorrect = timesCorrect,
+                    timesWrong = timesWrong,
+                    lastResult = lastRes,
+                    lastAttemptAt = latestAttempt.timestamp,
+                    rawLastAttemptAt = latestAttempt.rawTimestamp,
+                    nextDueAt = nextDue,
+                    rawNextDueAt = CsvHelper.formatIsoTimestamp(nextDue)
+                )
+                changed = true
+            }
+        }
+        if (changed) {
+            saveReviewState()
+        }
+    }
+
+    fun saveReviewState() {
+        val sb = StringBuilder()
+        sb.append(CsvHelper.REVIEW_STATE_HEADER).append("\n")
+        for (state in cachedReviewStates.values.sortedBy { it.questionId }) {
+            sb.append(CsvHelper.formatReviewStateLine(state))
+        }
+        overwriteFile("logs/review_state.csv", sb.toString())
+    }
+
+    fun getReviewState(questionId: String): ReviewStateItem? {
+        return cachedReviewStates[questionId.trim()]
+    }
+
+    fun filterDueAndUnattempted(questions: List<QuestionItem>): List<QuestionItem> {
+        val now = System.currentTimeMillis()
+        return questions.filter { q ->
+            val state = cachedReviewStates[q.questionId.trim()]
+            if (state == null) {
+                // Not-yet-attempted -> include in session
+                true
+            } else if (state.timesAttempted == 0 && state.timesSkipped == 0) {
+                // Not-yet-attempted -> include in session
+                true
+            } else {
+                // Already attempted or skipped: only include if next_due_at is now (<= now)
+                state.nextDueAt <= now
+            }
+        }
     }
 
     // --- Query APIs ---
@@ -329,6 +439,72 @@ class DataService(private val context: Context) {
         )
         cachedAttempts = cachedAttempts + log
         appendToFile("logs/attempts.csv", CsvHelper.formatAttemptLine(log), CsvHelper.ATTEMPTS_HEADER)
+
+        // Update schedule file (logs/review_state.csv)
+        val qId = question.questionId.trim()
+        val existing = cachedReviewStates[qId]
+        val timesAttempted = (existing?.timesAttempted ?: 0) + 1
+        val timesCorrect = (existing?.timesCorrect ?: 0) + (if (isCorrect) 1 else 0)
+        val timesWrong = (existing?.timesWrong ?: 0) + (if (!isCorrect) 1 else 0)
+        val timesSkipped = existing?.timesSkipped ?: 0
+        val lastResult = if (isCorrect) "correct" else "wrong"
+
+        val nextDue = if (isCorrect) {
+            val days = when (timesCorrect) {
+                1 -> 1L
+                2 -> 3L
+                3 -> 7L
+                else -> 14L
+            }
+            now + days * 24L * 60 * 60 * 1000L
+        } else {
+            now + 10L * 60 * 1000L // 10 minutes: due soon
+        }
+        val nextDueIso = CsvHelper.formatIsoTimestamp(nextDue)
+
+        val updatedState = ReviewStateItem(
+            questionId = qId,
+            timesAttempted = timesAttempted,
+            timesCorrect = timesCorrect,
+            timesWrong = timesWrong,
+            timesSkipped = timesSkipped,
+            lastResult = lastResult,
+            lastAttemptAt = now,
+            rawLastAttemptAt = isoTimestamp,
+            nextDueAt = nextDue,
+            rawNextDueAt = nextDueIso
+        )
+        cachedReviewStates[qId] = updatedState
+        saveReviewState()
+    }
+
+    suspend fun skipQuestion(question: QuestionItem) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val isoTimestamp = CsvHelper.formatIsoTimestamp(now)
+        val qId = question.questionId.trim()
+        val existing = cachedReviewStates[qId]
+        val timesAttempted = existing?.timesAttempted ?: 0
+        val timesCorrect = existing?.timesCorrect ?: 0
+        val timesWrong = existing?.timesWrong ?: 0
+        val timesSkipped = (existing?.timesSkipped ?: 0) + 1
+        val lastResult = "skipped"
+        val nextDue = now + 10L * 60 * 1000L // 10 minutes: due soon
+        val nextDueIso = CsvHelper.formatIsoTimestamp(nextDue)
+
+        val updatedState = ReviewStateItem(
+            questionId = qId,
+            timesAttempted = timesAttempted,
+            timesCorrect = timesCorrect,
+            timesWrong = timesWrong,
+            timesSkipped = timesSkipped,
+            lastResult = lastResult,
+            lastAttemptAt = now,
+            rawLastAttemptAt = isoTimestamp,
+            nextDueAt = nextDue,
+            rawNextDueAt = nextDueIso
+        )
+        cachedReviewStates[qId] = updatedState
+        saveReviewState()
     }
 
     suspend fun appendNoteUsage(
@@ -1346,9 +1522,106 @@ class DataService(private val context: Context) {
             } else false
         }
 
-        val attemptedToday = todayAttempts.size
+        // Distinct question_id attempted today
+        val distinctQuestionIdsToday = todayAttempts.map { it.questionId.trim() }.filter { it.isNotBlank() }.distinct()
+        val attemptedTodayDistinct = distinctQuestionIdsToday.size
+
         val todayCorrect = todayAttempts.count { it.isCorrect == 1 }
-        val todayAccuracy = if (attemptedToday > 0) (todayCorrect.toFloat() / attemptedToday) * 100f else null
+        val todayWrong = todayAttempts.count { it.isCorrect == 0 }
+        val todaySkipped = cachedReviewStates.values.count {
+            (it.lastResult == "skipped" || it.timesSkipped > 0) && isToday(it.lastAttemptAt)
+        }
+        val todayAccuracy = if (attemptedTodayDistinct > 0) (todayCorrect.toFloat() / todayAttempts.size.coerceAtLeast(1)) * 100f else null
+
+        val attemptedAtLeastOnce = cachedAttempts.map { it.questionId.trim() }.filter { it.isNotBlank() }.distinct().size
+        val nowMillis = System.currentTimeMillis()
+        val dueNowCount = cachedReviewStates.values.count {
+            (it.timesAttempted > 0 || it.timesSkipped > 0) && it.nextDueAt <= nowMillis
+        }
+
+        // --- Today's Breakdowns by Topic, Chapter, and Subject ---
+        val qMap = cachedQuestions.associateBy { it.questionId.trim() }
+        val todayQuestionsWithMeta = distinctQuestionIdsToday.mapNotNull { qId ->
+            val q = qMap[qId]
+            if (q != null) q else {
+                val firstAtt = todayAttempts.firstOrNull { it.questionId.trim() == qId }
+                if (firstAtt != null) {
+                    QuestionItem(
+                        exam = firstAtt.exam,
+                        questionId = qId,
+                        subject = firstAtt.subject,
+                        chapter = firstAtt.chapter,
+                        topic = "General",
+                        questionText = "",
+                        optionA = "", optionB = "", optionC = "", optionD = "",
+                        correctAnswer = ""
+                    )
+                } else null
+            }
+        }
+
+        // 1. By Topic: using topic from questions.csv joined on question_id
+        val topicGroups = todayQuestionsWithMeta.groupBy {
+            "${it.exam.trim()}|${it.subject.trim()}|${it.chapter.trim()}|${it.topic.trim()}"
+        }
+        val todayByTopicList = topicGroups.map { (key, qList) ->
+            val parts = key.split("|")
+            val ex = parts.getOrElse(0) { "" }
+            val sub = parts.getOrElse(1) { "" }
+            val ch = parts.getOrElse(2) { "" }
+            val top = parts.getOrElse(3) { "" }.ifBlank { "General" }
+            TodayAttemptGroupItem(
+                name = top,
+                parentLabel = listOf(ex, sub, ch).filter { it.isNotBlank() }.joinToString(" • "),
+                attemptedCount = qList.size,
+                filter = DrillDownFilter(
+                    exam = ex.ifBlank { null },
+                    subject = sub.ifBlank { null },
+                    chapter = ch.ifBlank { null },
+                    topic = top.ifBlank { null }
+                )
+            )
+        }.sortedByDescending { it.attemptedCount }
+
+        // 2. By Chapter
+        val chapterTodayGroups = todayQuestionsWithMeta.groupBy {
+            "${it.exam.trim()}|${it.subject.trim()}|${it.chapter.trim()}"
+        }
+        val todayByChapterList = chapterTodayGroups.map { (key, qList) ->
+            val parts = key.split("|")
+            val ex = parts.getOrElse(0) { "" }
+            val sub = parts.getOrElse(1) { "" }
+            val ch = parts.getOrElse(2) { "" }
+            TodayAttemptGroupItem(
+                name = ch,
+                parentLabel = listOf(ex, sub).filter { it.isNotBlank() }.joinToString(" • "),
+                attemptedCount = qList.size,
+                filter = DrillDownFilter(
+                    exam = ex.ifBlank { null },
+                    subject = sub.ifBlank { null },
+                    chapter = ch.ifBlank { null }
+                )
+            )
+        }.sortedByDescending { it.attemptedCount }
+
+        // 3. By Subject
+        val subjectTodayGroups = todayQuestionsWithMeta.groupBy {
+            "${it.exam.trim()}|${it.subject.trim()}"
+        }
+        val todayBySubjectList = subjectTodayGroups.map { (key, qList) ->
+            val parts = key.split("|")
+            val ex = parts.getOrElse(0) { "" }
+            val sub = parts.getOrElse(1) { "" }
+            TodayAttemptGroupItem(
+                name = sub,
+                parentLabel = ex,
+                attemptedCount = qList.size,
+                filter = DrillDownFilter(
+                    exam = ex.ifBlank { null },
+                    subject = sub.ifBlank { null }
+                )
+            )
+        }.sortedByDescending { it.attemptedCount }
 
         val totalTime = cachedAttempts.sumOf { it.timeSpentSec }
         val overallAvgTime = if (cachedAttempts.isNotEmpty()) totalTime / cachedAttempts.size else null
@@ -1436,15 +1709,31 @@ class DataService(private val context: Context) {
         return DashboardStats(
             totalQuestions = totalQuestions,
             totalAttempts = totalAttempts,
-            attemptedToday = attemptedToday,
+            attemptedAtLeastOnce = attemptedAtLeastOnce,
+            dueNowCount = dueNowCount,
+            attemptedToday = attemptedTodayDistinct,
+            correctToday = todayCorrect,
+            wrongToday = todayWrong,
+            skippedToday = todaySkipped,
             streakDays = streak,
             overallAvgTimeSec = overallAvgTime,
             todayAccuracyPercent = todayAccuracy,
             weakChapters = weakChapters,
             strongChapters = strongChapters,
             dailyAttempts = dailyList,
-            chapterStats = chapterStatItems
+            chapterStats = chapterStatItems,
+            todayByTopic = todayByTopicList,
+            todayByChapter = todayByChapterList,
+            todayBySubject = todayBySubjectList
         )
+    }
+
+    private fun isToday(timestampMillis: Long): Boolean {
+        if (timestampMillis <= 0L) return false
+        return try {
+            val date = LocalDate.ofInstant(Instant.ofEpochMilli(timestampMillis), ZoneId.systemDefault())
+            date == LocalDate.now()
+        } catch (_: Exception) { false }
     }
 
     suspend fun readNoteContent(filePath: String): String = withContext(Dispatchers.IO) {

@@ -5,6 +5,7 @@ import com.example.data.model.NoteItem
 import com.example.data.model.NoteQuestionLink
 import com.example.data.model.NoteUsageLog
 import com.example.data.model.QuestionItem
+import com.example.data.model.ReviewStateItem
 import com.example.data.model.VideoItem
 import com.example.data.model.VideoQuestionLink
 import com.example.data.model.VideoUsageLog
@@ -23,6 +24,7 @@ object CsvHelper {
     const val NOTE_QUESTIONS_HEADER = "note_id,question_id"
     const val VIDEO_QUESTIONS_HEADER = "video_id,question_id"
     const val ATTEMPTS_HEADER = "attempt_id,question_id,exam,subject,chapter,chosen_answer,is_correct,time_spent_sec,timestamp"
+    const val REVIEW_STATE_HEADER = "question_id,times_attempted,times_correct,times_wrong,times_skipped,last_result,last_attempt_at,next_due_at"
     const val NOTES_USAGE_HEADER = "event_id,note_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec"
     const val VIDEO_USAGE_HEADER = "event_id,video_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec,started_test"
     const val TREE_HEADER = "exam,subject,chapter,topic"
@@ -232,6 +234,44 @@ object CsvHelper {
             }
         }
         return result
+    }
+
+    fun parseReviewState(csvContent: String): Map<String, ReviewStateItem> {
+        val lines = csvContent.lines().filter { it.isNotBlank() }
+        if (lines.size <= 1) return emptyMap()
+        val result = mutableMapOf<String, ReviewStateItem>()
+        for (i in 1 until lines.size) {
+            val cols = parseCsvLine(lines[i])
+            if (cols.size >= 8) {
+                val qId = cols[0].trim()
+                val attempted = cols[1].trim().toIntOrNull() ?: 0
+                val correct = cols[2].trim().toIntOrNull() ?: 0
+                val wrong = cols[3].trim().toIntOrNull() ?: 0
+                val skipped = cols[4].trim().toIntOrNull() ?: 0
+                val lastRes = cols[5].trim().lowercase()
+                val rawLastAttempt = cols[6].trim()
+                val rawNextDue = cols[7].trim()
+                result[qId] = ReviewStateItem(
+                    questionId = qId,
+                    timesAttempted = attempted,
+                    timesCorrect = correct,
+                    timesWrong = wrong,
+                    timesSkipped = skipped,
+                    lastResult = lastRes,
+                    lastAttemptAt = parseTimestamp(rawLastAttempt),
+                    rawLastAttemptAt = rawLastAttempt,
+                    nextDueAt = parseTimestamp(rawNextDue),
+                    rawNextDueAt = rawNextDue
+                )
+            }
+        }
+        return result
+    }
+
+    fun formatReviewStateLine(item: ReviewStateItem): String {
+        val lastAttemptStr = if (item.rawLastAttemptAt.isNotBlank()) item.rawLastAttemptAt else if (item.lastAttemptAt > 0L) formatIsoTimestamp(item.lastAttemptAt) else ""
+        val nextDueStr = if (item.rawNextDueAt.isNotBlank()) item.rawNextDueAt else if (item.nextDueAt > 0L) formatIsoTimestamp(item.nextDueAt) else ""
+        return "${escape(item.questionId)},${item.timesAttempted},${item.timesCorrect},${item.timesWrong},${item.timesSkipped},${escape(item.lastResult)},$lastAttemptStr,$nextDueStr\n"
     }
 
     fun parseNotesUsage(csvContent: String): List<NoteUsageLog> {

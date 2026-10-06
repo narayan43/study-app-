@@ -164,4 +164,58 @@ class ExampleUnitTest {
         assertEquals("V007", parsedVideoLinks[0].videoId)
         assertEquals("Q081", parsedVideoLinks[0].questionId)
     }
+
+    @Test
+    fun testReviewStateParseAndFormat() {
+        val state = com.example.data.model.ReviewStateItem(
+            questionId = "Q001",
+            timesAttempted = 2,
+            timesCorrect = 1,
+            timesWrong = 1,
+            timesSkipped = 0,
+            lastResult = "correct",
+            lastAttemptAt = 1760000000000L,
+            rawLastAttemptAt = "2026-10-06T10:00:00+05:30",
+            nextDueAt = 1760086400000L,
+            rawNextDueAt = "2026-10-07T10:00:00+05:30"
+        )
+        val line = CsvHelper.formatReviewStateLine(state)
+        val csv = "${CsvHelper.REVIEW_STATE_HEADER}\n$line"
+        val parsedMap = CsvHelper.parseReviewState(csv)
+        assertEquals(1, parsedMap.size)
+        val parsed = parsedMap["Q001"]
+        assertTrue(parsed != null)
+        assertEquals("Q001", parsed!!.questionId)
+        assertEquals(2, parsed.timesAttempted)
+        assertEquals(1, parsed.timesCorrect)
+        assertEquals(1, parsed.timesWrong)
+        assertEquals(0, parsed.timesSkipped)
+        assertEquals("correct", parsed.lastResult)
+        assertEquals("2026-10-06T10:00:00+05:30", parsed.rawLastAttemptAt)
+        assertEquals("2026-10-07T10:00:00+05:30", parsed.rawNextDueAt)
+    }
+
+    @Test
+    fun testReviewStateSkip() {
+        val state = com.example.data.model.ReviewStateItem(
+            questionId = "Q002",
+            timesAttempted = 0,
+            timesCorrect = 0,
+            timesWrong = 0,
+            timesSkipped = 1,
+            lastResult = "skipped",
+            lastAttemptAt = 1760000000000L,
+            rawLastAttemptAt = "2026-10-06T10:00:00+05:30",
+            nextDueAt = 1760000600000L,
+            rawNextDueAt = "2026-10-06T10:10:00+05:30"
+        )
+        val line = CsvHelper.formatReviewStateLine(state)
+        val csv = "${CsvHelper.REVIEW_STATE_HEADER}\n$line"
+        val parsedMap = CsvHelper.parseReviewState(csv)
+        assertEquals(1, parsedMap.size)
+        val parsed = parsedMap["Q002"]
+        assertTrue(parsed != null)
+        assertEquals(1, parsed!!.timesSkipped)
+        assertEquals("skipped", parsed.lastResult)
+    }
 }

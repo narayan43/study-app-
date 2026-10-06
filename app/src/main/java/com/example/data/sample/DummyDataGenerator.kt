@@ -282,6 +282,14 @@ object DummyDataGenerator {
             attemptsFile.writeText(sb.toString())
         }
 
+        // 6b. logs/review_state.csv
+        val reviewStateFile = File(logsDir, "review_state.csv")
+        if (!reviewStateFile.exists() || reviewStateFile.length() == 0L) {
+            val sb = StringBuilder()
+            sb.append(CsvHelper.REVIEW_STATE_HEADER).append("\n")
+            reviewStateFile.writeText(sb.toString())
+        }
+
         // 7. logs/notes_usage.csv
         val notesUsageFile = File(logsDir, "notes_usage.csv")
         if (!notesUsageFile.exists() || notesUsageFile.length() == 0L) {

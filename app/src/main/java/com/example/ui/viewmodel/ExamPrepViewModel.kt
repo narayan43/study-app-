@@ -8,6 +8,7 @@ import com.example.data.model.DashboardStats
 import com.example.data.model.DrillDownFilter
 import com.example.data.model.NoteItem
 import com.example.data.model.QuestionItem
+import com.example.data.model.ReviewStateItem
 import com.example.data.model.TestSliceSource
 import com.example.data.model.VideoItem
 import com.example.data.repository.DataService
@@ -120,11 +121,17 @@ class ExamPrepViewModel(
 
     fun startTestSlice(source: TestSliceSource) {
         _activeTestSource.value = source
-        val questions = when (source) {
+        val rawQuestions = when (source) {
             is TestSliceSource.DrillDown -> dataService.questionsFor(source.filter)
             is TestSliceSource.NoteRevision -> dataService.questionsForNote(source.noteId)
             is TestSliceSource.VideoRevision -> dataService.questionsForVideo(source.videoId)
             is TestSliceSource.MistakesRetest -> dataService.getQuestionsByIds(source.questionIds)
+            is TestSliceSource.DashboardSlice -> dataService.questionsFor(source.filter)
+        }
+        val questions = if (source is TestSliceSource.MistakesRetest) {
+            rawQuestions
+        } else {
+            dataService.filterDueAndUnattempted(rawQuestions)
         }
         _activeTestQuestions.value = questions
     }
@@ -134,9 +141,18 @@ class ExamPrepViewModel(
         _activeTestSource.value = null
     }
 
+    fun getReviewState(questionId: String): ReviewStateItem? = dataService.getReviewState(questionId)
+
     fun submitAttempt(question: QuestionItem, chosenAnswer: String, isCorrect: Boolean, timeSpentSec: Int) {
         viewModelScope.launch {
             dataService.appendAttempt(question, chosenAnswer, isCorrect, timeSpentSec)
+            _dashboardStats.value = dataService.dashboardStats()
+        }
+    }
+
+    fun skipQuestion(question: QuestionItem) {
+        viewModelScope.launch {
+            dataService.skipQuestion(question)
             _dashboardStats.value = dataService.dashboardStats()
         }
     }

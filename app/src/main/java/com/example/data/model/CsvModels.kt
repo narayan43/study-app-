@@ -103,6 +103,7 @@ sealed class TestSliceSource {
     data class NoteRevision(val noteId: String, val noteTitle: String, val returnToNote: Boolean = true) : TestSliceSource()
     data class VideoRevision(val videoId: String, val videoTitle: String, val returnToReel: Boolean = true) : TestSliceSource()
     data class MistakesRetest(val exam: String, val subject: String, val chapter: String, val questionIds: List<String>) : TestSliceSource()
+    data class DashboardSlice(val filter: DrillDownFilter, val title: String) : TestSliceSource()
 }
 
 data class DailyAttemptStat(
@@ -112,17 +113,45 @@ data class DailyAttemptStat(
     val accuracyPercent: Float
 )
 
+data class ReviewStateItem(
+    val questionId: String,
+    val timesAttempted: Int = 0,
+    val timesCorrect: Int = 0,
+    val timesWrong: Int = 0,
+    val timesSkipped: Int = 0,
+    val lastResult: String = "", // "correct", "wrong", "skipped"
+    val lastAttemptAt: Long = 0L,
+    val rawLastAttemptAt: String = "",
+    val nextDueAt: Long = 0L,
+    val rawNextDueAt: String = ""
+)
+
+data class TodayAttemptGroupItem(
+    val name: String,
+    val parentLabel: String,
+    val attemptedCount: Int,
+    val filter: DrillDownFilter
+)
+
 data class DashboardStats(
-    val totalQuestions: Int = 0,
+    val totalQuestions: Int = 0, // questions in questions.csv
     val totalAttempts: Int = 0,
-    val attemptedToday: Int = 0,
+    val attemptedAtLeastOnce: Int = 0, // attempted at least once, counted as distinct question_id in attempts.csv
+    val dueNowCount: Int = 0, // due now, from review_state.csv
+    val attemptedToday: Int = 0, // attempted today, distinct question_id whose timestamp is today
+    val correctToday: Int = 0, // correct today
+    val wrongToday: Int = 0, // wrong today
+    val skippedToday: Int = 0, // skipped today
     val streakDays: Int = 0,
     val overallAvgTimeSec: Int? = null,
     val todayAccuracyPercent: Float? = null,
     val weakChapters: List<Pair<String, Float>> = emptyList(), // "Exam • Subject • Chapter" -> accuracy
     val strongChapters: List<Pair<String, Float>> = emptyList(),
     val dailyAttempts: List<DailyAttemptStat> = emptyList(),
-    val chapterStats: List<ChapterStatItem> = emptyList()
+    val chapterStats: List<ChapterStatItem> = emptyList(),
+    val todayByTopic: List<TodayAttemptGroupItem> = emptyList(),
+    val todayByChapter: List<TodayAttemptGroupItem> = emptyList(),
+    val todayBySubject: List<TodayAttemptGroupItem> = emptyList()
 )
 
 data class ChapterStatItem(

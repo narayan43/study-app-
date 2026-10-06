@@ -252,6 +252,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
             is TestSliceSource.VideoRevision -> currentTab = AppTab.REELS
             is TestSliceSource.MistakesRetest -> currentTab = AppTab.MISTAKES
             is TestSliceSource.DrillDown -> currentTab = AppTab.TEST
+            is TestSliceSource.DashboardSlice -> currentTab = AppTab.DASHBOARD
             null -> {}
         }
     }
@@ -307,6 +308,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
                             is TestSliceSource.VideoRevision -> currentTab = AppTab.REELS
                             is TestSliceSource.MistakesRetest -> currentTab = AppTab.MISTAKES
                             is TestSliceSource.DrillDown -> currentTab = AppTab.TEST
+                            is TestSliceSource.DashboardSlice -> currentTab = AppTab.DASHBOARD
                             null -> {}
                         }
                     },

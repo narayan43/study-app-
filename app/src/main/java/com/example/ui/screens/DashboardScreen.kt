@@ -20,15 +20,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AssignmentTurnedIn
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
@@ -36,6 +43,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -46,7 +55,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +68,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.TestSliceSource
 import com.example.ui.theme.EasySolid
 import com.example.ui.theme.EasyTint
 import com.example.ui.theme.HardSolid
@@ -74,6 +87,7 @@ fun DashboardScreen(
     val folderPath by viewModel.folderPath.collectAsState()
     val isFolderLinked by viewModel.isFolderLinked.collectAsState()
     val scope = rememberCoroutineScope()
+    var selectedBreakdownTab by remember { mutableStateOf(0) }
 
     LazyColumn(
         modifier = Modifier
@@ -179,7 +193,7 @@ fun DashboardScreen(
             }
         }
 
-        // --- Stat Cards: Surface, label TextSecondary, number TextPrimary, small caption TextSecondary ---
+        // --- Stat Cards: Total questions, attempted at least once, due now, attempted today, results today ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -188,21 +202,129 @@ fun DashboardScreen(
                 MetricCard(
                     title = "Total Questions",
                     value = "${stats.totalQuestions}",
-                    subtitle = "questions.csv",
+                    subtitle = "questions in questions.csv",
                     icon = Icons.Default.Quiz,
                     iconColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
                 )
 
                 MetricCard(
-                    title = "Attempted Today",
-                    value = if (stats.attemptedToday > 0) "${stats.attemptedToday}" else "0",
-                    subtitle = if (stats.attemptedToday > 0 && stats.todayAccuracyPercent != null)
-                        "${stats.todayAccuracyPercent!!.toInt()}% accuracy" else "No attempts today",
+                    title = "Attempted (≥1 Time)",
+                    value = "${stats.attemptedAtLeastOnce}",
+                    subtitle = "distinct in attempts.csv",
                     icon = Icons.Default.CheckCircle,
                     iconColor = EasySolid,
                     modifier = Modifier.weight(1f)
                 )
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                MetricCard(
+                    title = "Due Now",
+                    value = "${stats.dueNowCount}",
+                    subtitle = "from review_state.csv",
+                    icon = Icons.Default.Schedule,
+                    iconColor = HardSolid,
+                    modifier = Modifier.weight(1f)
+                )
+
+                MetricCard(
+                    title = "Attempted Today",
+                    value = "${stats.attemptedToday}",
+                    subtitle = if (stats.attemptedToday > 0 && stats.todayAccuracyPercent != null)
+                        "${stats.todayAccuracyPercent!!.toInt()}% acc (distinct)" else "distinct questions today",
+                    icon = Icons.Default.Today,
+                    iconColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Today's Results",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = EasySolid, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${stats.correctToday}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = EasySolid
+                                )
+                            }
+                            Text(
+                                text = "Correct",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box(modifier = Modifier.height(30.dp).width(1.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = HardSolid, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${stats.wrongToday}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = HardSolid
+                                )
+                            }
+                            Text(
+                                text = "Wrong",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box(modifier = Modifier.height(30.dp).width(1.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.SkipNext, contentDescription = null, tint = MediumSolid, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${stats.skippedToday}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MediumSolid
+                                )
+                            }
+                            Text(
+                                text = "Skipped",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -344,6 +466,145 @@ fun DashboardScreen(
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Lists for Today Only (Topic, Chapter, Subject) ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Today's Attempted Slices",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Tap a row to start a session of due & not-yet-attempted questions only",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = selectedBreakdownTab == 0,
+                            onClick = { selectedBreakdownTab = 0 },
+                            label = { Text("By Topic (${stats.todayByTopic.size})", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = selectedBreakdownTab == 1,
+                            onClick = { selectedBreakdownTab = 1 },
+                            label = { Text("By Chapter (${stats.todayByChapter.size})", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = selectedBreakdownTab == 2,
+                            onClick = { selectedBreakdownTab = 2 },
+                            label = { Text("By Subject (${stats.todayBySubject.size})", fontSize = 11.sp) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val activeList = when (selectedBreakdownTab) {
+                        0 -> stats.todayByTopic
+                        1 -> stats.todayByChapter
+                        else -> stats.todayBySubject
+                    }
+
+                    if (activeList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No questions attempted today in this category.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            activeList.forEach { item ->
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            viewModel.startTestSlice(
+                                                TestSliceSource.DashboardSlice(
+                                                    filter = item.filter,
+                                                    title = item.name
+                                                )
+                                            )
+                                        },
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.name,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (item.parentLabel.isNotBlank()) {
+                                                Text(
+                                                    text = item.parentLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                            ) {
+                                                Text(
+                                                    text = "${item.attemptedCount} attempted today",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(
+                                                Icons.Default.PlayArrow,
+                                                contentDescription = "Test due questions",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

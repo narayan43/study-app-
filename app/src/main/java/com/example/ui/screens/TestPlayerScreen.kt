@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,6 +139,7 @@ fun TestPlayerScreen(
         is TestSliceSource.NoteRevision -> "Note Revision: ${src.noteTitle}"
         is TestSliceSource.VideoRevision -> "Video Revision: ${src.videoTitle}"
         is TestSliceSource.MistakesRetest -> "Mistakes Retest: ${src.chapter}"
+        is TestSliceSource.DashboardSlice -> "Review: ${src.title}"
         is TestSliceSource.DrillDown -> {
             val list = listOfNotNull(src.filter.exam, src.filter.subject, src.filter.chapter, src.filter.topic)
             if (list.isEmpty()) "All Questions" else list.joinToString(" • ")
@@ -316,21 +318,44 @@ fun TestPlayerScreen(
                     }
 
                     if (!isSubmitted) {
-                        Button(
-                            onClick = {
-                                if (selectedOption != null) {
-                                    val isCorrect = selectedOption!!.equals(currentQuestion.correctAnswer, ignoreCase = true)
-                                    viewModel.submitAttempt(currentQuestion, selectedOption!!, isCorrect, timerSeconds)
-                                    isSubmitted = true
-                                }
-                            },
-                            enabled = selectedOption != null,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Text("Submit Answer", fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.skipQuestion(currentQuestion)
+                                        if (safeIndex < questions.size - 1) {
+                                            currentIndex = safeIndex + 1
+                                        } else {
+                                            onBack(sliceSource)
+                                        }
+                                    }
+                                },
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                ),
+                                modifier = Modifier.testTag("skip_button")
+                            ) {
+                                Text("Skip", fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (selectedOption != null) {
+                                        val isCorrect = selectedOption!!.equals(currentQuestion.correctAnswer, ignoreCase = true)
+                                        viewModel.submitAttempt(currentQuestion, selectedOption!!, isCorrect, timerSeconds)
+                                        isSubmitted = true
+                                    }
+                                },
+                                enabled = selectedOption != null,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                modifier = Modifier.testTag("submit_button")
+                            ) {
+                                Text("Submit Answer", fontWeight = FontWeight.Bold)
+                            }
                         }
                     } else {
                         Button(
@@ -363,25 +388,14 @@ fun TestPlayerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Chapter and Topic badge (Chips: Divider border, TextSecondary)
+            // Chapter, Topic badge and schedule stats badge (times_attempted, times_wrong, times_skipped)
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        modifier = Modifier.padding(vertical = 2.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${currentQuestion.exam} • ${currentQuestion.chapter}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    if (currentQuestion.topic.isNotBlank()) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.surface,
@@ -389,9 +403,80 @@ fun TestPlayerScreen(
                             modifier = Modifier.padding(vertical = 2.dp)
                         ) {
                             Text(
-                                text = currentQuestion.topic,
+                                text = "${currentQuestion.exam} • ${currentQuestion.chapter}",
                                 style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        if (currentQuestion.topic.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = currentQuestion.topic,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Schedule stats for this question: times_attempted, times_wrong, times_skipped
+                    val revState = viewModel.getReviewState(currentQuestion.questionId)
+                    val qAttempted = revState?.timesAttempted ?: 0
+                    val qWrong = revState?.timesWrong ?: 0
+                    val qSkipped = revState?.timesSkipped ?: 0
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = "Attempted: $qAttempted",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isDarkTheme) HardTintDark else HardTint,
+                            border = BorderStroke(1.dp, HardSolid.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "Wrong: $qWrong",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkTheme) OnHardDark else HardSolid,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "Skipped: $qSkipped",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
