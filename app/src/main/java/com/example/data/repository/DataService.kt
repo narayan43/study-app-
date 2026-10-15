@@ -22,9 +22,13 @@ import com.example.data.model.VideoItem
 import com.example.data.model.VideoQuestionLink
 import com.example.data.model.VideoUsageLog
 import com.example.data.sample.DummyDataGenerator
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.LocalDate
@@ -38,6 +42,9 @@ class DataService(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("exam_prep_prefs", Context.MODE_PRIVATE)
     private var externalTreeUri: Uri? = null
+
+    // Thread-safety mutex for concurrent cache updates and disk sync
+    private val dataMutex = Mutex()
 
     // In-memory cache loaded directly from CSVs
     private var cachedQuestions: List<QuestionItem> = emptyList()
@@ -162,61 +169,20 @@ class DataService(private val context: Context) {
             val latestAttempt = sortedAttempts.last()
 
             if (existing == null) {
-                val timesAttempted = attempts.size
-                val timesCorrect = attempts.count { it.isCorrect == 1 }
-                val timesWrong = attempts.count { it.isCorrect == 0 }
-                val lastRes = if (latestAttempt.isCorrect == 1) "correct" else "wrong"
-                val nextDue = if (lastRes == "correct") {
-                    val days = when (timesCorrect) {
-                        1 -> 1L
-                        2 -> 3L
-                        3 -> 7L
-                        else -> 14L
-                    }
-                    latestAttempt.timestamp + days * 24L * 60 * 60 * 1000L
-                } else {
-                    latestAttempt.timestamp + 10L * 60 * 1000L
+                val reconciled = com.example.data.scheduler.ReviewScheduler.reconcileFromAttempts(attempts)
+                if (reconciled != null) {
+                    cachedReviewStates[qId] = reconciled
+                    changed = true
                 }
-                cachedReviewStates[qId] = ReviewStateItem(
-                    questionId = qId,
-                    timesAttempted = timesAttempted,
-                    timesCorrect = timesCorrect,
-                    timesWrong = timesWrong,
-                    timesSkipped = 0,
-                    lastResult = lastRes,
-                    lastAttemptAt = latestAttempt.timestamp,
-                    rawLastAttemptAt = latestAttempt.rawTimestamp,
-                    nextDueAt = nextDue,
-                    rawNextDueAt = CsvHelper.formatIsoTimestamp(nextDue)
-                )
-                changed = true
             } else if (latestAttempt.timestamp > existing.lastAttemptAt) {
-                val timesAttempted = existing.timesAttempted + 1
-                val timesCorrect = existing.timesCorrect + (if (latestAttempt.isCorrect == 1) 1 else 0)
-                val timesWrong = existing.timesWrong + (if (latestAttempt.isCorrect == 0) 1 else 0)
-                val lastRes = if (latestAttempt.isCorrect == 1) "correct" else "wrong"
-                val nextDue = if (lastRes == "correct") {
-                    val days = when (timesCorrect) {
-                        1 -> 1L
-                        2 -> 3L
-                        3 -> 7L
-                        else -> 14L
-                    }
-                    latestAttempt.timestamp + days * 24L * 60 * 60 * 1000L
-                } else {
-                    latestAttempt.timestamp + 10L * 60 * 1000L
-                }
-                cachedReviewStates[qId] = existing.copy(
-                    timesAttempted = timesAttempted,
-                    timesCorrect = timesCorrect,
-                    timesWrong = timesWrong,
-                    lastResult = lastRes,
-                    lastAttemptAt = latestAttempt.timestamp,
-                    rawLastAttemptAt = latestAttempt.rawTimestamp,
-                    nextDueAt = nextDue,
-                    rawNextDueAt = CsvHelper.formatIsoTimestamp(nextDue)
+                val reconciled = com.example.data.scheduler.ReviewScheduler.reconcileFromAttempts(
+                    attempts,
+                    existingSkippedCount = existing.timesSkipped
                 )
-                changed = true
+                if (reconciled != null) {
+                    cachedReviewStates[qId] = reconciled
+                    changed = true
+                }
             }
         }
         if (changed) {
@@ -224,13 +190,16 @@ class DataService(private val context: Context) {
         }
     }
 
-    fun saveReviewState() {
+    fun saveReviewState(): Result<Unit> {
         val sb = StringBuilder()
         sb.append(CsvHelper.REVIEW_STATE_HEADER).append("\n")
-        for (state in cachedReviewStates.values.sortedBy { it.questionId }) {
+        val sortedStates = synchronized(cachedReviewStates) {
+            cachedReviewStates.values.sortedBy { it.questionId }
+        }
+        for (state in sortedStates) {
             sb.append(CsvHelper.formatReviewStateLine(state))
         }
-        overwriteFile("logs/review_state.csv", sb.toString())
+        return overwriteFile("logs/review_state.csv", sb.toString())
     }
 
     fun getReviewState(questionId: String): ReviewStateItem? {
@@ -422,89 +391,58 @@ class DataService(private val context: Context) {
         chosenAnswer: String,
         isCorrect: Boolean,
         timeSpentSec: Int
-    ) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val isoTimestamp = CsvHelper.formatIsoTimestamp(now)
-        val log = AttemptLog(
-            attemptId = "att_${UUID.randomUUID().toString().take(8)}",
-            questionId = question.questionId,
-            exam = question.exam,
-            subject = question.subject,
-            chapter = question.chapter,
-            chosenAnswer = chosenAnswer,
-            isCorrect = if (isCorrect) 1 else 0,
-            timeSpentSec = timeSpentSec,
-            timestamp = now,
-            rawTimestamp = isoTimestamp
-        )
-        cachedAttempts = cachedAttempts + log
-        appendToFile("logs/attempts.csv", CsvHelper.formatAttemptLine(log), CsvHelper.ATTEMPTS_HEADER)
-
-        // Update schedule file (logs/review_state.csv)
-        val qId = question.questionId.trim()
-        val existing = cachedReviewStates[qId]
-        val timesAttempted = (existing?.timesAttempted ?: 0) + 1
-        val timesCorrect = (existing?.timesCorrect ?: 0) + (if (isCorrect) 1 else 0)
-        val timesWrong = (existing?.timesWrong ?: 0) + (if (!isCorrect) 1 else 0)
-        val timesSkipped = existing?.timesSkipped ?: 0
-        val lastResult = if (isCorrect) "correct" else "wrong"
-
-        val nextDue = if (isCorrect) {
-            val days = when (timesCorrect) {
-                1 -> 1L
-                2 -> 3L
-                3 -> 7L
-                else -> 14L
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        dataMutex.withLock {
+            val now = System.currentTimeMillis()
+            val isoTimestamp = CsvHelper.formatIsoTimestamp(now)
+            val log = AttemptLog(
+                attemptId = "att_${UUID.randomUUID().toString().take(8)}",
+                questionId = question.questionId,
+                exam = question.exam,
+                subject = question.subject,
+                chapter = question.chapter,
+                chosenAnswer = chosenAnswer,
+                isCorrect = if (isCorrect) 1 else 0,
+                timeSpentSec = timeSpentSec,
+                timestamp = now,
+                rawTimestamp = isoTimestamp
+            )
+            cachedAttempts = cachedAttempts + log
+            val appendRes = appendToFile("logs/attempts.csv", CsvHelper.formatAttemptLine(log), CsvHelper.ATTEMPTS_HEADER)
+            if (appendRes.isFailure) {
+                return@withContext appendRes
             }
-            now + days * 24L * 60 * 60 * 1000L
-        } else {
-            now + 10L * 60 * 1000L // 10 minutes: due soon
-        }
-        val nextDueIso = CsvHelper.formatIsoTimestamp(nextDue)
 
-        val updatedState = ReviewStateItem(
-            questionId = qId,
-            timesAttempted = timesAttempted,
-            timesCorrect = timesCorrect,
-            timesWrong = timesWrong,
-            timesSkipped = timesSkipped,
-            lastResult = lastResult,
-            lastAttemptAt = now,
-            rawLastAttemptAt = isoTimestamp,
-            nextDueAt = nextDue,
-            rawNextDueAt = nextDueIso
-        )
-        cachedReviewStates[qId] = updatedState
-        saveReviewState()
+            // Update schedule file (logs/review_state.csv)
+            val qId = question.questionId.trim()
+            val existing = cachedReviewStates[qId]
+            val updatedState = com.example.data.scheduler.ReviewScheduler.onAttempt(
+                existing = existing,
+                questionId = qId,
+                isCorrect = isCorrect,
+                now = now,
+                isoTimestamp = isoTimestamp
+            )
+            cachedReviewStates[qId] = updatedState
+            saveReviewState()
+        }
     }
 
-    suspend fun skipQuestion(question: QuestionItem) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val isoTimestamp = CsvHelper.formatIsoTimestamp(now)
-        val qId = question.questionId.trim()
-        val existing = cachedReviewStates[qId]
-        val timesAttempted = existing?.timesAttempted ?: 0
-        val timesCorrect = existing?.timesCorrect ?: 0
-        val timesWrong = existing?.timesWrong ?: 0
-        val timesSkipped = (existing?.timesSkipped ?: 0) + 1
-        val lastResult = "skipped"
-        val nextDue = now + 10L * 60 * 1000L // 10 minutes: due soon
-        val nextDueIso = CsvHelper.formatIsoTimestamp(nextDue)
-
-        val updatedState = ReviewStateItem(
-            questionId = qId,
-            timesAttempted = timesAttempted,
-            timesCorrect = timesCorrect,
-            timesWrong = timesWrong,
-            timesSkipped = timesSkipped,
-            lastResult = lastResult,
-            lastAttemptAt = now,
-            rawLastAttemptAt = isoTimestamp,
-            nextDueAt = nextDue,
-            rawNextDueAt = nextDueIso
-        )
-        cachedReviewStates[qId] = updatedState
-        saveReviewState()
+    suspend fun skipQuestion(question: QuestionItem): Result<Unit> = withContext(Dispatchers.IO) {
+        dataMutex.withLock {
+            val now = System.currentTimeMillis()
+            val isoTimestamp = CsvHelper.formatIsoTimestamp(now)
+            val qId = question.questionId.trim()
+            val existing = cachedReviewStates[qId]
+            val updatedState = com.example.data.scheduler.ReviewScheduler.onSkip(
+                existing = existing,
+                questionId = qId,
+                now = now,
+                isoTimestamp = isoTimestamp
+            )
+            cachedReviewStates[qId] = updatedState
+            saveReviewState()
+        }
     }
 
     suspend fun appendNoteUsage(
@@ -1254,23 +1192,58 @@ class DataService(private val context: Context) {
         reloadData()
     }
 
-    fun overwriteFile(relPath: String, content: String) {
+    fun overwriteFile(relPath: String, content: String): Result<Unit> {
         val cleanRel = relPath.trimStart('/')
         val uri = externalTreeUri
-        if (uri != null) {
-            val docFile = getOrCreateDocumentFile(uri, cleanRel, headerIfNew = "")
-            if (docFile != null) {
-                try {
-                    context.contentResolver.openOutputStream(docFile.uri, "wt")?.use { stream ->
-                        stream.write(content.toByteArray())
-                    }
-                    return
-                } catch (_: Exception) {}
+        return if (uri != null) {
+            try {
+                // Crash-safe SAF write: write to .tmp document first, then write to target.
+                // SAF trade-off: SAF does not support POSIX atomic file swap across document URIs,
+                // but validating a temp file ensures the target is only overwritten after successful staging.
+                val tempRel = "$cleanRel.tmp"
+                val tempDoc = getOrCreateDocumentFile(uri, tempRel, headerIfNew = "")
+                    ?: return Result.failure(IOException("Cannot create temporary SAF file for $cleanRel"))
+
+                context.contentResolver.openOutputStream(tempDoc.uri, "wt")?.use { stream ->
+                    stream.write(content.toByteArray())
+                    stream.flush()
+                } ?: return Result.failure(IOException("Failed to open output stream for temp SAF file: $tempRel"))
+
+                val docFile = getOrCreateDocumentFile(uri, cleanRel, headerIfNew = "")
+                    ?: return Result.failure(IOException("Cannot create target SAF file for $cleanRel"))
+
+                context.contentResolver.openOutputStream(docFile.uri, "wt")?.use { stream ->
+                    stream.write(content.toByteArray())
+                    stream.flush()
+                } ?: return Result.failure(IOException("Failed to open output stream for target SAF file: $cleanRel"))
+
+                try { tempDoc.delete() } catch (_: Exception) {}
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e("DataService", "SAF overwriteFile failed for $cleanRel", e)
+                Result.failure(e)
+            }
+        } else {
+            try {
+                val f = File(localDataDir, cleanRel)
+                f.parentFile?.mkdirs()
+                val tmp = File(localDataDir, "$cleanRel.tmp")
+                tmp.parentFile?.mkdirs()
+                tmp.outputStream().use { os ->
+                    os.write(content.toByteArray())
+                    os.flush()
+                    try { (os as? java.io.FileOutputStream)?.fd?.sync() } catch (_: Exception) {}
+                }
+                if (!tmp.renameTo(f)) {
+                    tmp.copyTo(f, overwrite = true)
+                    tmp.delete()
+                }
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e("DataService", "Local overwriteFile failed for $cleanRel", e)
+                Result.failure(e)
             }
         }
-        val f = File(localDataDir, cleanRel)
-        f.parentFile?.mkdirs()
-        f.writeText(content)
     }
 
     suspend fun appendNoteLink(noteId: String, questionId: String) = withContext(Dispatchers.IO) {
@@ -1782,7 +1755,7 @@ class DataService(private val context: Context) {
         content: String? = null,
         sourceUri: Uri? = null,
         byteContent: ByteArray? = null
-    ) {
+    ): Result<Unit> {
         val cleanRel = relPath.trimStart('/')
         val mime = when {
             cleanRel.endsWith(".txt") || cleanRel.endsWith(".md") -> "text/plain"
@@ -1795,68 +1768,84 @@ class DataService(private val context: Context) {
         }
 
         val uri = externalTreeUri
-        if (uri != null) {
-            val docFile = getOrCreateDocumentFile(uri, cleanRel, headerIfNew = "", mimeType = mime)
-            if (docFile != null) {
-                try {
-                    context.contentResolver.openOutputStream(docFile.uri)?.use { os ->
-                        if (sourceUri != null) {
-                            context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                                input.copyTo(os)
-                            }
-                        } else if (byteContent != null) {
-                            os.write(byteContent)
-                        } else if (content != null) {
-                            os.write(content.toByteArray())
-                        }
-                    }
-                    return
-                } catch (_: Exception) {}
-            }
-        }
-
-        // Local fallback
-        val f = File(localDataDir, cleanRel)
-        f.parentFile?.mkdirs()
-        if (sourceUri != null) {
+        return if (uri != null) {
             try {
-                context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                    f.outputStream().use { output ->
-                        input.copyTo(output)
+                val docFile = getOrCreateDocumentFile(uri, cleanRel, headerIfNew = "", mimeType = mime)
+                    ?: return Result.failure(IOException("Cannot create SAF file: $cleanRel"))
+
+                context.contentResolver.openOutputStream(docFile.uri)?.use { os ->
+                    if (sourceUri != null) {
+                        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                            input.copyTo(os)
+                        } ?: return Result.failure(IOException("Cannot open input stream for source: $sourceUri"))
+                    } else if (byteContent != null) {
+                        os.write(byteContent)
+                    } else if (content != null) {
+                        os.write(content.toByteArray())
                     }
+                    os.flush()
+                } ?: return Result.failure(IOException("Cannot open output stream for SAF file: $cleanRel"))
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e("DataService", "SAF writeOrCopyFile error for $cleanRel", e)
+                Result.failure(e)
+            }
+        } else {
+            try {
+                val f = File(localDataDir, cleanRel)
+                f.parentFile?.mkdirs()
+                if (sourceUri != null) {
+                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        f.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    } ?: return Result.failure(IOException("Cannot open input stream for source: $sourceUri"))
+                } else if (byteContent != null) {
+                    f.writeBytes(byteContent)
+                } else if (content != null) {
+                    f.writeText(content)
+                } else if (!f.exists()) {
+                    f.createNewFile()
                 }
-            } catch (_: Exception) {}
-        } else if (byteContent != null) {
-            f.writeBytes(byteContent)
-        } else if (content != null) {
-            f.writeText(content)
-        } else if (!f.exists()) {
-            f.createNewFile()
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e("DataService", "Local writeOrCopyFile error for $cleanRel", e)
+                Result.failure(e)
+            }
         }
     }
 
-    private fun appendToFile(relPath: String, lineToAppend: String, headerIfNew: String) {
+    private fun appendToFile(relPath: String, lineToAppend: String, headerIfNew: String): Result<Unit> {
         val uri = externalTreeUri
-        if (uri != null) {
-            val docFile = getOrCreateDocumentFile(uri, relPath, headerIfNew)
-            if (docFile != null) {
-                try {
-                    context.contentResolver.openOutputStream(docFile.uri, "wa")?.use { stream ->
-                        stream.write(lineToAppend.toByteArray())
-                    }
-                    return
-                } catch (_: Exception) {}
-            }
-        }
+        return if (uri != null) {
+            try {
+                val docFile = getOrCreateDocumentFile(uri, relPath, headerIfNew)
+                    ?: return Result.failure(IOException("Cannot access or create SAF file: $relPath"))
 
-        // Local fallback
-        val f = File(localDataDir, relPath)
-        f.parentFile?.mkdirs()
-        if (!f.exists()) {
-            f.writeText(headerIfNew + "\n")
-        }
-        if (lineToAppend.isNotEmpty()) {
-            f.appendText(lineToAppend)
+                context.contentResolver.openOutputStream(docFile.uri, "wa")?.use { stream ->
+                    stream.write(lineToAppend.toByteArray())
+                    stream.flush()
+                } ?: return Result.failure(IOException("Cannot open append stream for SAF file: $relPath"))
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e("DataService", "SAF appendToFile error for $relPath", e)
+                Result.failure(e)
+            }
+        } else {
+            try {
+                val f = File(localDataDir, relPath)
+                f.parentFile?.mkdirs()
+                if (!f.exists()) {
+                    f.writeText(headerIfNew + "\n")
+                }
+                if (lineToAppend.isNotEmpty()) {
+                    f.appendText(lineToAppend)
+                }
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e("DataService", "Local appendToFile error for $relPath", e)
+                Result.failure(e)
+            }
         }
     }
 

@@ -24,38 +24,32 @@ object CsvHelper {
     const val NOTE_QUESTIONS_HEADER = "note_id,question_id"
     const val VIDEO_QUESTIONS_HEADER = "video_id,question_id"
     const val ATTEMPTS_HEADER = "attempt_id,question_id,exam,subject,chapter,chosen_answer,is_correct,time_spent_sec,timestamp"
-    const val REVIEW_STATE_HEADER = "question_id,times_attempted,times_correct,times_wrong,times_skipped,last_result,last_attempt_at,next_due_at"
+    const val REVIEW_STATE_HEADER = "question_id,times_attempted,times_correct,times_wrong,times_skipped,last_result,last_attempt_at,next_due_at,consecutive_correct"
     const val NOTES_USAGE_HEADER = "event_id,note_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec"
     const val VIDEO_USAGE_HEADER = "event_id,video_id,exam,subject,chapter,opened_at,closed_at,time_spent_sec,started_test"
     const val TREE_HEADER = "exam,subject,chapter,topic"
 
     data class TreeRow(val exam: String, val subject: String, val chapter: String, val topic: String)
 
-    // Parse ISO-8601 first, fallback to epoch millis
     fun parseTimestamp(str: String): Long {
         if (str.isBlank()) return 0L
         val trimmed = str.trim()
-        // 1. Try ISO-8601 with offset
         try {
             return OffsetDateTime.parse(trimmed).toInstant().toEpochMilli()
         } catch (_: Exception) {}
 
-        // 2. Try Instant (e.g. Z)
         try {
             return Instant.parse(trimmed).toEpochMilli()
         } catch (_: Exception) {}
 
-        // 3. Try LocalDateTime (without offset)
         try {
             val ldt = LocalDateTime.parse(trimmed)
             return ldt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         } catch (_: Exception) {}
 
-        // 4. Fallback to epoch millis if all digits
         return trimmed.toLongOrNull() ?: 0L
     }
 
-    // Format as ISO-8601 with system zone offset
     fun formatIsoTimestamp(epochMilli: Long = System.currentTimeMillis()): String {
         return try {
             val instant = Instant.ofEpochMilli(epochMilli)
@@ -66,17 +60,101 @@ object CsvHelper {
         }
     }
 
+    /**
+     * Strict validation of questions header tokens.
+     */
     fun validateQuestionsHeader(headerLine: String): Boolean {
-        val lower = headerLine.lowercase()
-        return lower.contains("exam") && lower.contains("question_id") && lower.contains("question_text") && lower.contains("correct_answer")
+        val tokens = parseCsvLine(headerLine).map { it.trim().lowercase() }
+        val required = listOf("exam", "question_id", "question_text", "correct_answer")
+        return tokens.containsAll(required)
+    }
+
+    /**
+     * Quote-aware CSV parser that correctly preserves newlines inside quoted fields.
+     * Handles CRLF, LF, CR, escaped quotes (""), and empty fields.
+     */
+    fun parseCsvRows(csvContent: String): List<List<String>> {
+        if (csvContent.isBlank()) return emptyList()
+        val rows = mutableListOf<List<String>>()
+        val currentRow = mutableListOf<String>()
+        val currentField = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        val len = csvContent.length
+
+        while (i < len) {
+            val c = csvContent[i]
+            if (c == '"') {
+                if (inQuotes && i + 1 < len && csvContent[i + 1] == '"') {
+                    // Escaped quote: "" -> "
+                    currentField.append('"')
+                    i++
+                } else {
+                    inQuotes = !inQuotes
+                }
+            } else if (c == ',' && !inQuotes) {
+                currentRow.add(currentField.toString().trim())
+                currentField.setLength(0)
+            } else if ((c == '\n' || c == '\r') && !inQuotes) {
+                if (c == '\r' && i + 1 < len && csvContent[i + 1] == '\n') {
+                    i++
+                }
+                currentRow.add(currentField.toString().trim())
+                currentField.setLength(0)
+                if (currentRow.any { it.isNotBlank() }) {
+                    rows.add(ArrayList(currentRow))
+                }
+                currentRow.clear()
+            } else {
+                currentField.append(c)
+            }
+            i++
+        }
+
+        if (currentField.isNotEmpty() || currentRow.isNotEmpty()) {
+            currentRow.add(currentField.toString().trim())
+            if (currentRow.any { it.isNotBlank() }) {
+                rows.add(currentRow)
+            }
+        }
+        return rows
+    }
+
+    /**
+     * Parses a single CSV line into column tokens.
+     */
+    fun parseCsvLine(line: String): List<String> {
+        val tokens = mutableListOf<String>()
+        var inQuotes = false
+        val sb = StringBuilder()
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            if (c == '\"') {
+                if (inQuotes && i + 1 < line.length && line[i + 1] == '\"') {
+                    sb.append('\"')
+                    i++
+                } else {
+                    inQuotes = !inQuotes
+                }
+            } else if (c == ',' && !inQuotes) {
+                tokens.add(sb.toString().trim())
+                sb.setLength(0)
+            } else {
+                sb.append(c)
+            }
+            i++
+        }
+        tokens.add(sb.toString().trim())
+        return tokens
     }
 
     fun parseQuestions(csvContent: String): List<QuestionItem> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<QuestionItem>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 16) {
                 result.add(
                     QuestionItem(
@@ -99,7 +177,6 @@ object CsvHelper {
                     )
                 )
             } else if (cols.size >= 11) {
-                // Schema migration: older CSV without 5 image columns
                 val answer = cols.last().trim().uppercase()
                 result.add(
                     QuestionItem(
@@ -127,11 +204,11 @@ object CsvHelper {
     }
 
     fun parseNotes(csvContent: String): List<NoteItem> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<NoteItem>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 7) {
                 val filePath = cols[6]
                 val defaultType = when {
@@ -159,11 +236,11 @@ object CsvHelper {
     }
 
     fun parseVideos(csvContent: String): List<VideoItem> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<VideoItem>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 7) {
                 val duration = if (cols.size >= 8) cols[7].toIntOrNull() ?: 0 else 0
                 result.add(
@@ -184,11 +261,11 @@ object CsvHelper {
     }
 
     fun parseNoteQuestions(csvContent: String): List<NoteQuestionLink> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<NoteQuestionLink>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 2) {
                 result.add(NoteQuestionLink(noteId = cols[0].trim(), questionId = cols[1].trim()))
             }
@@ -197,11 +274,11 @@ object CsvHelper {
     }
 
     fun parseVideoQuestions(csvContent: String): List<VideoQuestionLink> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<VideoQuestionLink>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 2) {
                 result.add(VideoQuestionLink(videoId = cols[0].trim(), questionId = cols[1].trim()))
             }
@@ -210,11 +287,11 @@ object CsvHelper {
     }
 
     fun parseAttempts(csvContent: String): List<AttemptLog> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<AttemptLog>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 9) {
                 val rawTime = cols[8].trim()
                 result.add(
@@ -237,11 +314,11 @@ object CsvHelper {
     }
 
     fun parseReviewState(csvContent: String): Map<String, ReviewStateItem> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyMap()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyMap()
         val result = mutableMapOf<String, ReviewStateItem>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 8) {
                 val qId = cols[0].trim()
                 val attempted = cols[1].trim().toIntOrNull() ?: 0
@@ -251,6 +328,11 @@ object CsvHelper {
                 val lastRes = cols[5].trim().lowercase()
                 val rawLastAttempt = cols[6].trim()
                 val rawNextDue = cols[7].trim()
+                val streak = if (cols.size >= 9) {
+                    cols[8].trim().toIntOrNull() ?: 0
+                } else {
+                    if (lastRes == "correct") 1 else 0
+                }
                 result[qId] = ReviewStateItem(
                     questionId = qId,
                     timesAttempted = attempted,
@@ -261,7 +343,8 @@ object CsvHelper {
                     lastAttemptAt = parseTimestamp(rawLastAttempt),
                     rawLastAttemptAt = rawLastAttempt,
                     nextDueAt = parseTimestamp(rawNextDue),
-                    rawNextDueAt = rawNextDue
+                    rawNextDueAt = rawNextDue,
+                    consecutiveCorrect = streak
                 )
             }
         }
@@ -271,15 +354,15 @@ object CsvHelper {
     fun formatReviewStateLine(item: ReviewStateItem): String {
         val lastAttemptStr = if (item.rawLastAttemptAt.isNotBlank()) item.rawLastAttemptAt else if (item.lastAttemptAt > 0L) formatIsoTimestamp(item.lastAttemptAt) else ""
         val nextDueStr = if (item.rawNextDueAt.isNotBlank()) item.rawNextDueAt else if (item.nextDueAt > 0L) formatIsoTimestamp(item.nextDueAt) else ""
-        return "${escape(item.questionId)},${item.timesAttempted},${item.timesCorrect},${item.timesWrong},${item.timesSkipped},${escape(item.lastResult)},$lastAttemptStr,$nextDueStr\n"
+        return "${escape(item.questionId)},${item.timesAttempted},${item.timesCorrect},${item.timesWrong},${item.timesSkipped},${escape(item.lastResult)},$lastAttemptStr,$nextDueStr,${item.consecutiveCorrect}\n"
     }
 
     fun parseNotesUsage(csvContent: String): List<NoteUsageLog> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<NoteUsageLog>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 8) {
                 val rawOpened = cols[5].trim()
                 val rawClosed = cols[6].trim()
@@ -303,11 +386,11 @@ object CsvHelper {
     }
 
     fun parseVideoUsage(csvContent: String): List<VideoUsageLog> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<VideoUsageLog>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 9) {
                 val rawOpened = cols[5].trim()
                 val rawClosed = cols[6].trim()
@@ -403,21 +486,25 @@ object CsvHelper {
         return "${escape(videoId)},${escape(questionId)}\n"
     }
 
+    /**
+     * RFC 4180 compliant escaping:
+     * Preserves newlines (\n, \r) by quoting the field and doubling quotes.
+     * Never replaces newlines with space.
+     */
     fun escape(data: String): String {
-        var str = data.replace("\r", " ").replace("\n", " ")
-        if (str.contains(",") || str.contains("\"")) {
-            str = str.replace("\"", "\"\"")
-            return "\"$str\""
+        if (data.contains(",") || data.contains("\"") || data.contains("\n") || data.contains("\r")) {
+            val escaped = data.replace("\"", "\"\"")
+            return "\"$escaped\""
         }
-        return str
+        return data
     }
 
     fun parseTree(csvContent: String): List<TreeRow> {
-        val lines = csvContent.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+        val rows = parseCsvRows(csvContent)
+        if (rows.size <= 1) return emptyList()
         val result = mutableListOf<TreeRow>()
-        for (i in 1 until lines.size) {
-            val cols = parseCsvLine(lines[i])
+        for (i in 1 until rows.size) {
+            val cols = rows[i]
             if (cols.size >= 4) {
                 result.add(TreeRow(cols[0], cols[1], cols[2], cols[3]))
             }
@@ -427,31 +514,5 @@ object CsvHelper {
 
     fun formatTreeLine(row: TreeRow): String {
         return "${escape(row.exam)},${escape(row.subject)},${escape(row.chapter)},${escape(row.topic)}\n"
-    }
-
-    fun parseCsvLine(line: String): List<String> {
-        val tokens = mutableListOf<String>()
-        var inQuotes = false
-        val sb = StringBuilder()
-        var i = 0
-        while (i < line.length) {
-            val c = line[i]
-            if (c == '\"') {
-                if (inQuotes && i + 1 < line.length && line[i + 1] == '\"') {
-                    sb.append('\"')
-                    i++
-                } else {
-                    inQuotes = !inQuotes
-                }
-            } else if (c == ',' && !inQuotes) {
-                tokens.add(sb.toString().trim())
-                sb.setLength(0)
-            } else {
-                sb.append(c)
-            }
-            i++
-        }
-        tokens.add(sb.toString().trim())
-        return tokens
     }
 }

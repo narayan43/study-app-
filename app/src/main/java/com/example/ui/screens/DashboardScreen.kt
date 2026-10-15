@@ -86,8 +86,22 @@ fun DashboardScreen(
     val stats by viewModel.dashboardStats.collectAsState()
     val folderPath by viewModel.folderPath.collectAsState()
     val isFolderLinked by viewModel.isFolderLinked.collectAsState()
+    val storageError by viewModel.storageError.collectAsState()
     val scope = rememberCoroutineScope()
     var selectedBreakdownTab by remember { mutableStateOf(0) }
+
+    if (storageError != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { viewModel.clearStorageError() },
+            title = { Text("Storage Warning", fontWeight = FontWeight.Bold) },
+            text = { Text(storageError!!) },
+            confirmButton = {
+                Button(onClick = { viewModel.clearStorageError() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier

@@ -53,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,20 +100,33 @@ fun TestPlayerScreen(
     val sliceSource by viewModel.activeTestSource.collectAsState()
     val isDarkTheme by viewModel.isDarkTheme.collectAsState()
 
-    var currentIndex by remember { mutableIntStateOf(0) }
-    var selectedOption by remember { mutableStateOf<String?>(null) }
-    var isSubmitted by remember { mutableStateOf(false) }
-    var timerSeconds by remember { mutableIntStateOf(0) }
-    var showLinkedNotes by remember { mutableStateOf(false) }
-    var showDeleteQuestionConfirm by remember { mutableStateOf(false) }
+    val storageError by viewModel.storageError.collectAsState()
+
+    var currentIndex by rememberSaveable { mutableIntStateOf(0) }
+    var selectedOption by rememberSaveable { mutableStateOf<String?>(null) }
+    var isSubmitted by rememberSaveable { mutableStateOf(false) }
+    var timerSeconds by rememberSaveable { mutableIntStateOf(0) }
+    var showLinkedNotes by rememberSaveable { mutableStateOf(false) }
+    var showDeleteQuestionConfirm by rememberSaveable { mutableStateOf(false) }
+    var lastRecordedIndex by rememberSaveable { mutableIntStateOf(-1) }
 
     val safeIndex = if (questions.isEmpty()) 0 else currentIndex.coerceIn(0, questions.size - 1)
     val currentQuestion = questions.getOrNull(safeIndex)
 
+    // Reset option and state only when transitioning to a different question (not on configuration change)
+    LaunchedEffect(safeIndex) {
+        if (lastRecordedIndex != safeIndex) {
+            lastRecordedIndex = safeIndex
+            selectedOption = null
+            isSubmitted = false
+            showLinkedNotes = false
+            timerSeconds = 0
+        }
+    }
+
     // Timer per question (starts on show, stops on submit)
     LaunchedEffect(safeIndex, isSubmitted) {
         if (!isSubmitted) {
-            timerSeconds = 0
             while (true) {
                 delay(1000)
                 timerSeconds++
@@ -120,11 +134,17 @@ fun TestPlayerScreen(
         }
     }
 
-    // Reset option and panel when question index changes
-    LaunchedEffect(safeIndex) {
-        selectedOption = null
-        isSubmitted = false
-        showLinkedNotes = false
+    if (storageError != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearStorageError() },
+            title = { Text("Storage Warning", fontWeight = FontWeight.Bold) },
+            text = { Text(storageError!!) },
+            confirmButton = {
+                Button(onClick = { viewModel.clearStorageError() }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 
     val linkedNotes = remember(currentQuestion) {

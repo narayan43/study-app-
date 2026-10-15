@@ -58,6 +58,25 @@ class ExamPrepViewModel(
     private val _isDarkTheme = MutableStateFlow(dataService.isDarkTheme())
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
 
+    private val _storageError = MutableStateFlow<String?>(null)
+    val storageError: StateFlow<String?> = _storageError.asStateFlow()
+
+    private val _availableExams = MutableStateFlow<List<String>>(emptyList())
+    val availableExams: StateFlow<List<String>> = _availableExams.asStateFlow()
+
+    private val _availableSubjects = MutableStateFlow<List<String>>(emptyList())
+    val availableSubjects: StateFlow<List<String>> = _availableSubjects.asStateFlow()
+
+    private val _availableChapters = MutableStateFlow<List<String>>(emptyList())
+    val availableChapters: StateFlow<List<String>> = _availableChapters.asStateFlow()
+
+    private val _availableTopics = MutableStateFlow<List<String>>(emptyList())
+    val availableTopics: StateFlow<List<String>> = _availableTopics.asStateFlow()
+
+    fun clearStorageError() {
+        _storageError.value = null
+    }
+
     fun toggleTheme() {
         val next = !_isDarkTheme.value
         _isDarkTheme.value = next
@@ -87,6 +106,10 @@ class ExamPrepViewModel(
         _dashboardStats.value = dataService.dashboardStats()
         _folderPath.value = dataService.getCurrentFolderDisplay()
         _isFolderLinked.value = dataService.isFolderLinked()
+        _availableExams.value = dataService.listExams()
+        _availableSubjects.value = dataService.listSubjects(null)
+        _availableChapters.value = dataService.listChapters(null, null)
+        _availableTopics.value = dataService.listTopics(null, null, null)
     }
 
     fun linkDataFolder(uri: Uri) {
@@ -145,14 +168,20 @@ class ExamPrepViewModel(
 
     fun submitAttempt(question: QuestionItem, chosenAnswer: String, isCorrect: Boolean, timeSpentSec: Int) {
         viewModelScope.launch {
-            dataService.appendAttempt(question, chosenAnswer, isCorrect, timeSpentSec)
+            val res = dataService.appendAttempt(question, chosenAnswer, isCorrect, timeSpentSec)
+            if (res.isFailure) {
+                _storageError.value = "Storage error: Failed to record attempt: ${res.exceptionOrNull()?.message}"
+            }
             _dashboardStats.value = dataService.dashboardStats()
         }
     }
 
     fun skipQuestion(question: QuestionItem) {
         viewModelScope.launch {
-            dataService.skipQuestion(question)
+            val res = dataService.skipQuestion(question)
+            if (res.isFailure) {
+                _storageError.value = "Storage error: Failed to record skip: ${res.exceptionOrNull()?.message}"
+            }
             _dashboardStats.value = dataService.dashboardStats()
         }
     }

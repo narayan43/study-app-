@@ -123,7 +123,8 @@ data class ReviewStateItem(
     val lastAttemptAt: Long = 0L,
     val rawLastAttemptAt: String = "",
     val nextDueAt: Long = 0L,
-    val rawNextDueAt: String = ""
+    val rawNextDueAt: String = "",
+    val consecutiveCorrect: Int = 0
 )
 
 data class TodayAttemptGroupItem(

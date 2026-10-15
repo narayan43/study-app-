@@ -109,8 +109,25 @@ jobs:
       - name: Prepare Release Assets
         run: |
           mkdir -p release-assets
-          cp app/build/outputs/apk/debug/app-debug.apk "release-assets/ExamPrep-${{ steps.version.outputs.version_name }}.apk"
+          APK_NAME="ExamPrep-${{ steps.version.outputs.version_name }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "release-assets/$APK_NAME"
           cp app/build/outputs/apk/debug/app-debug.apk release-assets/app-debug.apk
+          
+          # Compute SHA-256 checksum file
+          cd release-assets
+          SHA256=$(sha256sum "$APK_NAME" | awk '{print $1}')
+          echo "$SHA256  $APK_NAME" > "$APK_NAME.sha256"
+          
+          # Create version.json release asset
+          cat <<EOF > version.json
+          {
+            "versionCode": ${{ steps.version.outputs.version_code }},
+            "versionName": "${{ steps.version.outputs.version_name }}",
+            "apkFileName": "$APK_NAME",
+            "sha256": "$SHA256"
+          }
+          EOF
+          cd ..
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -121,6 +138,8 @@ jobs:
           prerelease: false
           files: |
             release-assets/ExamPrep-${{ steps.version.outputs.version_name }}.apk
+            release-assets/ExamPrep-${{ steps.version.outputs.version_name }}.apk.sha256
+            release-assets/version.json
             release-assets/app-debug.apk
           body: |
             ## ExamPrep CSV v${{ steps.version.outputs.version_name }}

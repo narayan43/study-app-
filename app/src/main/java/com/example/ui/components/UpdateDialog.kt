@@ -96,6 +96,7 @@ fun UpdateDialog(
                 context = context,
                 downloadUrl = release.apkDownloadUrl,
                 targetFileName = release.apkFileName,
+                expectedSha256 = release.expectedSha256,
                 onProgress = { downloaded, total, percent ->
                     state = UpdateDialogState.Downloading(release, percent, downloaded, total)
                 }
