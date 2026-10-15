@@ -56,6 +56,7 @@ import com.example.ui.components.AppTab
 import com.example.ui.components.DrillDownSelector
 import com.example.ui.components.ExamPrepBottomBar
 import com.example.ui.components.ExamPrepTopBar
+import com.example.ui.components.ImportQuestionsCsvDialog
 import com.example.ui.components.UpdateDialog
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.MistakesScreen
@@ -98,6 +99,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
     val scope = rememberCoroutineScope()
 
     var showAddTestQuestionSheet by remember { mutableStateOf(false) }
+    var showImportQuestionsCsvDialog by remember { mutableStateOf(false) }
     var showQuestionAuthoringMenu by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
 
@@ -173,7 +175,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
                             .clip(RoundedCornerShape(10.dp))
                             .clickable {
                                 showQuestionAuthoringMenu = false
-                                questionCsvPickerLauncher.launch(arrayOf("text/*", "text/comma-separated-values", "application/csv"))
+                                showImportQuestionsCsvDialog = true
                             },
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -228,6 +230,14 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
         )
     }
 
+    if (showImportQuestionsCsvDialog) {
+        ImportQuestionsCsvDialog(
+            overrideFilter = testFilter,
+            viewModel = viewModel,
+            onDismiss = { showImportQuestionsCsvDialog = false }
+        )
+    }
+
     if (showUpdateDialog) {
         UpdateDialog(
             onDismiss = { showUpdateDialog = false }
@@ -253,6 +263,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
             is TestSliceSource.MistakesRetest -> currentTab = AppTab.MISTAKES
             is TestSliceSource.DrillDown -> currentTab = AppTab.TEST
             is TestSliceSource.DashboardSlice -> currentTab = AppTab.DASHBOARD
+            is TestSliceSource.DueReview -> currentTab = AppTab.DASHBOARD
             null -> {}
         }
     }
@@ -309,6 +320,7 @@ fun ExamPrepMainApp(viewModel: ExamPrepViewModel) {
                             is TestSliceSource.MistakesRetest -> currentTab = AppTab.MISTAKES
                             is TestSliceSource.DrillDown -> currentTab = AppTab.TEST
                             is TestSliceSource.DashboardSlice -> currentTab = AppTab.DASHBOARD
+                            is TestSliceSource.DueReview -> currentTab = AppTab.DASHBOARD
                             null -> {}
                         }
                     },

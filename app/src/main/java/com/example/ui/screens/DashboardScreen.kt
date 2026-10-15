@@ -74,6 +74,7 @@ import com.example.ui.theme.EasyTint
 import com.example.ui.theme.HardSolid
 import com.example.ui.theme.HardTint
 import com.example.ui.theme.MediumSolid
+import com.example.ui.components.DueQuestionsReviewSheet
 import com.example.ui.viewmodel.ExamPrepViewModel
 import kotlinx.coroutines.launch
 
@@ -89,6 +90,14 @@ fun DashboardScreen(
     val storageError by viewModel.storageError.collectAsState()
     val scope = rememberCoroutineScope()
     var selectedBreakdownTab by remember { mutableStateOf(0) }
+    var showDueReviewSheet by remember { mutableStateOf(false) }
+
+    if (showDueReviewSheet) {
+        DueQuestionsReviewSheet(
+            viewModel = viewModel,
+            onDismiss = { showDueReviewSheet = false }
+        )
+    }
 
     if (storageError != null) {
         androidx.compose.material3.AlertDialog(
@@ -241,10 +250,11 @@ fun DashboardScreen(
                 MetricCard(
                     title = "Due Now",
                     value = "${stats.dueNowCount}",
-                    subtitle = "from review_state.csv",
+                    subtitle = "Tap to review by subject",
                     icon = Icons.Default.Schedule,
                     iconColor = HardSolid,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = { showDueReviewSheet = true }
                 )
 
                 MetricCard(
@@ -751,10 +761,13 @@ fun MetricCard(
     subtitle: String,
     icon: ImageVector,
     iconColor: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.then(
+            if (onClick != null) Modifier.clickable { onClick() } else Modifier
+        ),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),

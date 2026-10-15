@@ -104,6 +104,7 @@ sealed class TestSliceSource {
     data class VideoRevision(val videoId: String, val videoTitle: String, val returnToReel: Boolean = true) : TestSliceSource()
     data class MistakesRetest(val exam: String, val subject: String, val chapter: String, val questionIds: List<String>) : TestSliceSource()
     data class DashboardSlice(val filter: DrillDownFilter, val title: String) : TestSliceSource()
+    data class DueReview(val title: String, val subject: String? = null, val chapter: String? = null) : TestSliceSource()
 }
 
 data class DailyAttemptStat(

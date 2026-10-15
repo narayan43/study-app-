@@ -850,14 +850,54 @@ class DataService(private val context: Context) {
     fun getQuestionBankExams(): List<String> =
         cachedQuestions.map { it.exam.trim() }.filter { it.isNotBlank() }.distinct().sorted()
 
-    fun getQuestionBankSubjects(): List<String> =
-        cachedQuestions.map { it.subject.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+    fun getQuestionBankSubjects(exam: String? = null): List<String> =
+        cachedQuestions.filter { exam.isNullOrBlank() || it.exam.trim().equals(exam.trim(), ignoreCase = true) }
+            .map { it.subject.trim() }.filter { it.isNotBlank() }.distinct().sorted()
 
-    fun getQuestionBankChapters(): List<String> =
-        cachedQuestions.map { it.chapter.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+    fun getQuestionBankChapters(exam: String? = null, subject: String? = null): List<String> =
+        cachedQuestions.filter {
+            (exam.isNullOrBlank() || it.exam.trim().equals(exam.trim(), ignoreCase = true)) &&
+            (subject.isNullOrBlank() || it.subject.trim().equals(subject.trim(), ignoreCase = true))
+        }.map { it.chapter.trim() }.filter { it.isNotBlank() }.distinct().sorted()
 
-    fun getQuestionBankTopics(): List<String> =
-        cachedQuestions.map { it.topic.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+    fun getQuestionBankTopics(exam: String? = null, subject: String? = null, chapter: String? = null): List<String> =
+        cachedQuestions.filter {
+            (exam.isNullOrBlank() || it.exam.trim().equals(exam.trim(), ignoreCase = true)) &&
+            (subject.isNullOrBlank() || it.subject.trim().equals(subject.trim(), ignoreCase = true)) &&
+            (chapter.isNullOrBlank() || it.chapter.trim().equals(chapter.trim(), ignoreCase = true))
+        }.map { it.topic.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+
+    fun getPendingLinkedNoteIds(): List<String> {
+        val existingNoteIds = cachedNotes.map { it.noteId.trim().lowercase() }.toSet()
+        return cachedNoteQuestions.map { it.noteId.trim() }
+            .filter { it.isNotBlank() && !existingNoteIds.contains(it.lowercase()) }
+            .distinct().sorted()
+    }
+
+    fun getPendingLinkedVideoIds(): List<String> {
+        val existingVideoIds = cachedVideos.map { it.videoId.trim().lowercase() }.toSet()
+        return cachedVideoQuestions.map { it.videoId.trim() }
+            .filter { it.isNotBlank() && !existingVideoIds.contains(it.lowercase()) }
+            .distinct().sorted()
+    }
+
+    fun getAllKnownNoteIds(): List<String> {
+        return (cachedNotes.map { it.noteId.trim() } + cachedNoteQuestions.map { it.noteId.trim() })
+            .filter { it.isNotBlank() }.distinct().sorted()
+    }
+
+    fun getAllKnownVideoIds(): List<String> {
+        return (cachedVideos.map { it.videoId.trim() } + cachedVideoQuestions.map { it.videoId.trim() })
+            .filter { it.isNotBlank() }.distinct().sorted()
+    }
+
+    fun getDueQuestions(subject: String? = null, chapter: String? = null): List<QuestionItem> {
+        val dueAll = filterDueAndUnattempted(cachedQuestions)
+        return dueAll.filter { q ->
+            (subject.isNullOrBlank() || q.subject.trim().equals(subject.trim(), ignoreCase = true)) &&
+            (chapter.isNullOrBlank() || q.chapter.trim().equals(chapter.trim(), ignoreCase = true))
+        }
+    }
 
     /**
      * Imports questions from CSV or ZIP for an open reel or open note:
@@ -1508,9 +1548,7 @@ class DataService(private val context: Context) {
 
         val attemptedAtLeastOnce = cachedAttempts.map { it.questionId.trim() }.filter { it.isNotBlank() }.distinct().size
         val nowMillis = System.currentTimeMillis()
-        val dueNowCount = cachedReviewStates.values.count {
-            (it.timesAttempted > 0 || it.timesSkipped > 0) && it.nextDueAt <= nowMillis
-        }
+        val dueNowCount = filterDueAndUnattempted(cachedQuestions).size
 
         // --- Today's Breakdowns by Topic, Chapter, and Subject ---
         val qMap = cachedQuestions.associateBy { it.questionId.trim() }

@@ -150,13 +150,26 @@ class ExamPrepViewModel(
             is TestSliceSource.VideoRevision -> dataService.questionsForVideo(source.videoId)
             is TestSliceSource.MistakesRetest -> dataService.getQuestionsByIds(source.questionIds)
             is TestSliceSource.DashboardSlice -> dataService.questionsFor(source.filter)
+            is TestSliceSource.DueReview -> dataService.getDueQuestions(source.subject, source.chapter)
         }
-        val questions = if (source is TestSliceSource.MistakesRetest) {
+        val questions = if (source is TestSliceSource.MistakesRetest || source is TestSliceSource.DueReview) {
             rawQuestions
         } else {
             dataService.filterDueAndUnattempted(rawQuestions)
         }
         _activeTestQuestions.value = questions
+    }
+
+    fun startDueReview(title: String, subject: String? = null, chapter: String? = null) {
+        startTestSlice(TestSliceSource.DueReview(title = title, subject = subject, chapter = chapter))
+    }
+
+    fun getDueQuestionsGrouped(): Map<String, Map<String, List<QuestionItem>>> {
+        val due = dataService.getDueQuestions()
+        return due.groupBy { it.subject.trim().ifBlank { "General" } }
+            .mapValues { (_, qList) ->
+                qList.groupBy { it.chapter.trim().ifBlank { "General" } }
+            }
     }
 
     fun clearActiveTest() {
@@ -304,9 +317,14 @@ class ExamPrepViewModel(
     }
 
     fun getQuestionBankExams(): List<String> = dataService.getQuestionBankExams()
-    fun getQuestionBankSubjects(): List<String> = dataService.getQuestionBankSubjects()
-    fun getQuestionBankChapters(): List<String> = dataService.getQuestionBankChapters()
-    fun getQuestionBankTopics(): List<String> = dataService.getQuestionBankTopics()
+    fun getQuestionBankSubjects(exam: String? = null): List<String> = dataService.getQuestionBankSubjects(exam)
+    fun getQuestionBankChapters(exam: String? = null, subject: String? = null): List<String> = dataService.getQuestionBankChapters(exam, subject)
+    fun getQuestionBankTopics(exam: String? = null, subject: String? = null, chapter: String? = null): List<String> = dataService.getQuestionBankTopics(exam, subject, chapter)
+
+    fun getPendingLinkedNoteIds(): List<String> = dataService.getPendingLinkedNoteIds()
+    fun getPendingLinkedVideoIds(): List<String> = dataService.getPendingLinkedVideoIds()
+    fun getAllKnownNoteIds(): List<String> = dataService.getAllKnownNoteIds()
+    fun getAllKnownVideoIds(): List<String> = dataService.getAllKnownVideoIds()
 
     suspend fun importQuestionsForLinkedEntity(
         sourceUri: Uri,

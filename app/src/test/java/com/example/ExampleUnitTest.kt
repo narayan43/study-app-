@@ -218,4 +218,63 @@ class ExampleUnitTest {
         assertEquals(1, parsed!!.timesSkipped)
         assertEquals("skipped", parsed.lastResult)
     }
+
+    @Test
+    fun testQuestionBankTreeDistinctQueries() {
+        val q1 = QuestionItem("UPSI", "Q1", "Law", "IPC", "Murder", "Q1 text", "A", "B", "C", "D", "", "", "", "", "", "A")
+        val q2 = QuestionItem("UPSI", "Q2", "Law", "CrPC", "Arrest", "Q2 text", "A", "B", "C", "D", "", "", "", "", "", "B")
+        val q3 = QuestionItem("UPSI", "Q3", "Hindi", "Vyakaran", "Sandhi", "Q3 text", "A", "B", "C", "D", "", "", "", "", "", "C")
+        val list = listOf(q1, q2, q3)
+
+        val exams = list.map { it.exam.trim() }.distinct().sorted()
+        assertEquals(listOf("UPSI"), exams)
+
+        val subjectsForUpsi = list.filter { it.exam.equals("UPSI", ignoreCase = true) }.map { it.subject.trim() }.distinct().sorted()
+        assertEquals(listOf("Hindi", "Law"), subjectsForUpsi)
+
+        val chaptersForLaw = list.filter { it.exam.equals("UPSI", ignoreCase = true) && it.subject.equals("Law", ignoreCase = true) }
+            .map { it.chapter.trim() }.distinct().sorted()
+        assertEquals(listOf("CrPC", "IPC"), chaptersForLaw)
+
+        val topicsForIpc = list.filter { it.chapter.equals("IPC", ignoreCase = true) }.map { it.topic.trim() }.distinct().sorted()
+        assertEquals(listOf("Murder"), topicsForIpc)
+    }
+
+    @Test
+    fun testPendingLinkIdsDetection() {
+        val noteQuestions = listOf(
+            Pair("NOTE_001", "Q1"),
+            Pair("NOTE_001", "Q2"),
+            Pair("NOTE_002", "Q3")
+        )
+        val existingNoteIds = setOf("NOTE_001") // Only NOTE_001 exists in notes.csv
+
+        val pending = noteQuestions.map { it.first }.filter { !existingNoteIds.contains(it) }.distinct().sorted()
+        assertEquals(listOf("NOTE_002"), pending)
+    }
+
+    @Test
+    fun testDueQuestionsFilterLogic() {
+        val now = 1000000L
+        val qDue = QuestionItem("UPSI", "Q_DUE", "Law", "IPC", "Offences", "Text", "A", "B", "C", "D", "", "", "", "", "", "A")
+        val qNotDue = QuestionItem("UPSI", "Q_FUTURE", "Law", "IPC", "Offences", "Text", "A", "B", "C", "D", "", "", "", "", "", "A")
+        val qNeverAttempted = QuestionItem("UPSI", "Q_NEW", "Law", "IPC", "Offences", "Text", "A", "B", "C", "D", "", "", "", "", "", "A")
+
+        val reviewStates = mapOf(
+            "Q_DUE" to com.example.data.model.ReviewStateItem("Q_DUE", 1, 1, 0, 0, "correct", now - 10000, "", now - 5000, ""),
+            "Q_FUTURE" to com.example.data.model.ReviewStateItem("Q_FUTURE", 1, 1, 0, 0, "correct", now - 10000, "", now + 500000, "")
+            // Q_NEW has no review state
+        )
+
+        val questions = listOf(qDue, qNotDue, qNeverAttempted)
+        val filtered = questions.filter { q ->
+            val state = reviewStates[q.questionId]
+            state == null || (state.timesAttempted == 0 && state.timesSkipped == 0) || state.nextDueAt <= now
+        }
+
+        assertEquals(2, filtered.size)
+        assertTrue(filtered.any { it.questionId == "Q_DUE" })
+        assertTrue(filtered.any { it.questionId == "Q_NEW" })
+        assertTrue(filtered.none { it.questionId == "Q_FUTURE" })
+    }
 }

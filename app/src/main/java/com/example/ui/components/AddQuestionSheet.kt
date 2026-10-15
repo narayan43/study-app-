@@ -197,13 +197,13 @@ fun AddQuestionSheet(
             }
         }
     ) {
-        // Master CSV Hierarchy Pickers (Cascading, Searchable Dropdown with Explicit Add New)
+        // Master CSV Hierarchy Pickers (Cascading from questions.csv with Explicit Add New)
         HierarchyPicker(
             lockedFilter = lockedFilter,
-            availableExams = viewModel.listExams(),
-            getSubjects = { viewModel.listSubjects(it) },
-            getChapters = { ex, sub -> viewModel.listChapters(ex, sub) },
-            getTopics = { ex, sub, ch -> viewModel.listTopics(ex, sub, ch) },
+            availableExams = viewModel.getQuestionBankExams(),
+            getSubjects = { viewModel.getQuestionBankSubjects(it) },
+            getChapters = { ex, sub -> viewModel.getQuestionBankChapters(ex, sub) },
+            getTopics = { ex, sub, ch -> viewModel.getQuestionBankTopics(ex, sub, ch) },
             selectedExam = inputExam,
             onExamChange = { inputExam = it },
             selectedSubject = inputSubject,
@@ -354,33 +354,39 @@ fun AddQuestionSheet(
         )
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Link Note Selector
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { noteMenuExpanded = true },
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+        // Optional Link to Note (note does not have to exist yet)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            OutlinedTextField(
+                value = selectedNoteId ?: "",
+                onValueChange = { selectedNoteId = it.ifBlank { null } },
+                label = { Text("Assign note_id (Optional)") },
+                placeholder = { Text("e.g. NOTE_001 (or type new ID)") },
+                leadingIcon = {
+                    Icon(Icons.AutoMirrored.Filled.Note, contentDescription = null, modifier = Modifier.size(18.dp))
+                },
+                trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.AutoMirrored.Filled.Note, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        val noteLabel = selectedNoteId?.let { id ->
-                            val n = availableNotes.find { it.noteId == id }
-                            "[$id] ${n?.title ?: "Note"}"
-                        } ?: "Link to Note (None selected)"
-                        Text(noteLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                        if (!selectedNoteId.isNullOrBlank()) {
+                            IconButton(onClick = { selectedNoteId = null }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        if (availableNotes.isNotEmpty()) {
+                            IconButton(onClick = { noteMenuExpanded = true }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select existing note")
+                            }
+                        }
                     }
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = {
+                    Text(
+                        "Appends to links/note_questions.csv. Note does not have to exist yet.",
+                        fontSize = 11.sp
+                    )
                 }
-            }
+            )
 
             DropdownMenu(
                 expanded = noteMenuExpanded,
@@ -407,33 +413,39 @@ fun AddQuestionSheet(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Link Video Selector
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { videoMenuExpanded = true },
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+        // Optional Link to Video / Reel (reel does not have to exist yet)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            OutlinedTextField(
+                value = selectedVideoId ?: "",
+                onValueChange = { selectedVideoId = it.ifBlank { null } },
+                label = { Text("Assign video_id (Optional)") },
+                placeholder = { Text("e.g. VID_001 (or type new ID)") },
+                leadingIcon = {
+                    Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(18.dp))
+                },
+                trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        val videoLabel = selectedVideoId?.let { id ->
-                            val v = availableVideos.find { it.videoId == id }
-                            "[$id] ${v?.title ?: "Video"}"
-                        } ?: "Link to Video (None selected)"
-                        Text(videoLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                        if (!selectedVideoId.isNullOrBlank()) {
+                            IconButton(onClick = { selectedVideoId = null }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        if (availableVideos.isNotEmpty()) {
+                            IconButton(onClick = { videoMenuExpanded = true }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select existing video")
+                            }
+                        }
                     }
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = {
+                    Text(
+                        "Appends to links/video_questions.csv. Reel does not have to exist yet.",
+                        fontSize = 11.sp
+                    )
                 }
-            }
+            )
 
             DropdownMenu(
                 expanded = videoMenuExpanded,

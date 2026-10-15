@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
@@ -106,6 +107,7 @@ fun TestPlayerScreen(
     var selectedOption by rememberSaveable { mutableStateOf<String?>(null) }
     var isSubmitted by rememberSaveable { mutableStateOf(false) }
     var timerSeconds by rememberSaveable { mutableIntStateOf(0) }
+    var isTimerPaused by rememberSaveable { mutableStateOf(false) }
     var showLinkedNotes by rememberSaveable { mutableStateOf(false) }
     var showDeleteQuestionConfirm by rememberSaveable { mutableStateOf(false) }
     var lastRecordedIndex by rememberSaveable { mutableIntStateOf(-1) }
@@ -121,12 +123,13 @@ fun TestPlayerScreen(
             isSubmitted = false
             showLinkedNotes = false
             timerSeconds = 0
+            isTimerPaused = false
         }
     }
 
-    // Timer per question (starts on show, stops on submit)
-    LaunchedEffect(safeIndex, isSubmitted) {
-        if (!isSubmitted) {
+    // Timer per question (starts on show, stops on submit or pause)
+    LaunchedEffect(safeIndex, isSubmitted, isTimerPaused) {
+        if (!isSubmitted && !isTimerPaused) {
             while (true) {
                 delay(1000)
                 timerSeconds++
@@ -160,6 +163,7 @@ fun TestPlayerScreen(
         is TestSliceSource.VideoRevision -> "Video Revision: ${src.videoTitle}"
         is TestSliceSource.MistakesRetest -> "Mistakes Retest: ${src.chapter}"
         is TestSliceSource.DashboardSlice -> "Review: ${src.title}"
+        is TestSliceSource.DueReview -> "Due Review: ${src.title}"
         is TestSliceSource.DrillDown -> {
             val list = listOfNotNull(src.filter.exam, src.filter.subject, src.filter.chapter, src.filter.topic)
             if (list.isEmpty()) "All Questions" else list.joinToString(" • ")
@@ -275,13 +279,24 @@ fun TestPlayerScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f))
+                            .background(
+                                if (isTimerPaused) MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
+                                else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f)
+                            )
+                            .clickable(enabled = !isSubmitted) {
+                                isTimerPaused = !isTimerPaused
+                            }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
+                        Icon(
+                            imageVector = if (isTimerPaused) Icons.Default.Pause else Icons.Default.Timer,
+                            contentDescription = if (isTimerPaused) "Resume timer" else "Pause timer",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${timerSeconds}s",
+                            text = if (isTimerPaused) "${timerSeconds}s (Paused)" else "${timerSeconds}s",
                             color = MaterialTheme.colorScheme.onPrimary,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
@@ -408,6 +423,38 @@ fun TestPlayerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (isTimerPaused && !isSubmitted) {
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { isTimerPaused = false },
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Pause,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Timer Paused • Tap here or on timer to resume",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+
             // Chapter, Topic badge and schedule stats badge (times_attempted, times_wrong, times_skipped)
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
